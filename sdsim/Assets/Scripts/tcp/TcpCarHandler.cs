@@ -7,6 +7,8 @@ using UnityEngine.SceneManagement;
 using UnityStandardAssets.ImageEffects;
 using UnityEngine.AI;
 using System.Collections.Generic;
+using System.Text; // rbx, https://stackoverflow.com/questions/34460047/how-do-i-import-encoding-class-to-c-sharp-script
+using System;      // rbx, https://docs.microsoft.com/en-us/dotnet/api/system.object.tostring?view=net-6.0
 
 namespace tk
 {
@@ -360,11 +362,55 @@ namespace tk
         {
             Debug.Log("Got car config message");
 
+            /* 
+                1. using System.Text;
+
+                RBX unicode testing
+                char upArrow = '\u25B2';
+                GUILayout.Button(upArrow.ToString());
+                https://stackoverflow.com/questions/67350446/c-sharp-unity-unicode-emoji-display
+                only python:
+                Escape Sequence  Meaning
+                \xnn             Character with  8-bit hex value nn
+                \unnnn           Character with 16-bit hex value nnnn
+                \Unnnnnnnn       Character with 32-bit hex value nnnnnnnn
+                \N{name}         Character named name in the Unicode database (not implemented)
+
+                'France': u'\U0001F1EB\U0001F1F7',
+                'Germany': u'\U0001F1E9\U0001F1EA',
+
+                works: https://www.codeproject.com/questions/781294/how-to-convert-unicode-number-to-string-in-csharp
+                string  mystring = Char.Parse("\u2602").ToString();
+                Debug.Log("mystring: " + mystring);
+
+                
+                convert unicode to string and vice versa http://www.liangshunet.com/en/202008/938699215.htm
+
+
+            */
             string body_style = json.GetField("body_style").str;
             int body_r = int.Parse(json.GetField("body_r").str);
             int body_g = int.Parse(json.GetField("body_g").str);
             int body_b = int.Parse(json.GetField("body_b").str);
             string car_name = json.GetField("car_name").str;
+            
+            // -------------------------------------------------------------------------------------------
+            //char upArrow = '\u25B2';
+            //car_name = upArrow.toString();
+            //flag_france = '\u0001F1EB\u0001F1F7';
+            // encode the python string "car_name" containing unicode characters into c# string
+            //string car_name_csharp = Encoding.UTF8.GetString(Encoding.Default.GetBytes(car_name));
+            //string mystring = Encoding.UTF8.GetString(Encoding.Default.GetBytes(flag_checkered));
+            //char flag_checkered = '\U0001F3C1';
+            // s = System.Text.RegularExpressions.Regex.Unescape(s);
+            
+            string  umbrella_str = Char.Parse("\u2602").ToString();
+            //string flag_pirate = Char.Parse("\uD83C\uDFF4\u200D\u2620\uFE0F").ToString();
+            Debug.Log("mystring_str: " + umbrella_str);
+            car_name = car_name + " " + umbrella_str;
+            
+
+            // -------------------------------------------------------------------------------------------
             int font_size = 100;
 
             if (json.GetField("font_size") != null)
@@ -645,3 +691,20 @@ namespace tk
         }
     }
 }
+
+/*
+ rbx https://stackoverflow.com/questions/4184190/unicode-to-string-conversion-in-c-sharp
+private string BytesToString(byte[] Bytes)
+{
+  MemoryStream MS = new MemoryStream(Bytes);
+  StreamReader SR = new StreamReader(MS);
+  string S = SR.ReadToEnd();
+  SR.Close();
+  return S;
+}
+
+private string ToUnicode(string S)
+{
+  return BytesToString(new UnicodeEncoding().GetBytes(S));
+}
+*/
