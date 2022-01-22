@@ -405,9 +405,12 @@ namespace tk
             // s = System.Text.RegularExpressions.Regex.Unescape(s);
             
             string  umbrella_str = Char.Parse("\u2602").ToString();
-            //string flag_pirate = Char.Parse("\uD83C\uDFF4\u200D\u2620\uFE0F").ToString();
+            // parse the unicode string of pirate flag to string
+            string  flag_pirate = Encoding.UTF8.GetString(Encoding.Default.GetBytes("\uD83C\uDFF4\u200D\u2620\uFE0F"));
+
+            //string flag_pirate = Char[].Parse("\uD83C\uDFF4\u200D\u2620\uFE0F").ToString();
             Debug.Log("mystring_str: " + umbrella_str);
-            car_name = car_name + " " + umbrella_str;
+            car_name = car_name + " " + umbrella_str + flag_pirate;
             
 
             // -------------------------------------------------------------------------------------------
