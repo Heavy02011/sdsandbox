@@ -7,8 +7,10 @@ using UnityEngine.SceneManagement;
 using UnityStandardAssets.ImageEffects;
 using UnityEngine.AI;
 using System.Collections.Generic;
-using System.Text; // rbx, https://stackoverflow.com/questions/34460047/how-do-i-import-encoding-class-to-c-sharp-script
-using System;      // rbx, https://docs.microsoft.com/en-us/dotnet/api/system.object.tostring?view=net-6.0
+using System;          // rbx, https://docs.microsoft.com/en-us/dotnet/api/system.object.tostring?view=net-6.0
+using System.Text;     // rbx, https://stackoverflow.com/questions/34460047/how-do-i-import-encoding-class-to-c-sharp-script
+using System.IO;       // rbx, https://docs.microsoft.com/en-us/dotnet/api/system.io.streamwriter?view=net-6.0  
+//using System.Numerics; // rbx
 
 namespace tk
 {
@@ -358,6 +360,22 @@ namespace tk
             yield return null;
         }
 
+
+        // rbx https://stackoverflow.com/questions/4184190/unicode-to-string-conversion-in-c-sharp
+        private string BytesToString(byte[] Bytes)
+        {
+            MemoryStream MS = new MemoryStream(Bytes);
+            StreamReader SR = new StreamReader(MS);
+            string S = SR.ReadToEnd();
+            SR.Close();
+            return S;
+        }
+
+        private string ToUnicode(string S)
+        {
+            return BytesToString(new UnicodeEncoding().GetBytes(S));
+        }
+
         void OnCarConfig(JSONObject json)
         {
             Debug.Log("Got car config message");
@@ -386,6 +404,9 @@ namespace tk
                 
                 convert unicode to string and vice versa http://www.liangshunet.com/en/202008/938699215.htm
 
+                encode the python string "car_name" containing unicode characters into c# string
+                string car_name_csharp = Encoding.UTF8.GetString(Encoding.Default.GetBytes(car_name));
+                string mystring = Encoding.UTF8.GetString(Encoding.Default.GetBytes(flag_checkered));
 
             */
             string body_style = json.GetField("body_style").str;
@@ -395,24 +416,32 @@ namespace tk
             string car_name = json.GetField("car_name").str;
             
             // -------------------------------------------------------------------------------------------
-            //char upArrow = '\u25B2';
-            //car_name = upArrow.toString();
-            //flag_france = '\u0001F1EB\u0001F1F7';
-            // encode the python string "car_name" containing unicode characters into c# string
-            //string car_name_csharp = Encoding.UTF8.GetString(Encoding.Default.GetBytes(car_name));
-            //string mystring = Encoding.UTF8.GetString(Encoding.Default.GetBytes(flag_checkered));
-            //char flag_checkered = '\U0001F3C1';
-            // s = System.Text.RegularExpressions.Regex.Unescape(s);
-            
-            string  umbrella_str = Char.Parse("\u2602").ToString();
-            // parse the unicode string of pirate flag to string
+
+            // working unicode sample strings        
             string  flag_pirate = Encoding.UTF8.GetString(Encoding.Default.GetBytes("\uD83C\uDFF4\u200D\u2620\uFE0F"));
+            string  umbrella_str = Char.Parse("\u2602").ToString();
 
-            //string flag_pirate = Char[].Parse("\uD83C\uDFF4\u200D\u2620\uFE0F").ToString();
-            Debug.Log("mystring_str: " + umbrella_str);
+            // NOT working unicode sample strings
+            // string flag_pacman = Char.Parse("\U0001F47D").ToString();
+            // string flag_pacman = Char.Parse("\U0001F47D").ToString();
+            string flag_france      = "🇫🇷";
+            string flag_germany     = "🇩🇪";
+            string flag_usa         = "🇺🇸";
+            string flag_canada      = "🇨🇦";
+            string flag_brazil      = "🇧🇷";
+            string flag_russia      = "🇷🇺";
+
+            // Debug Output of samples
+            Debug.Log("umbrella_str: " + umbrella_str);
+            Debug.Log("flag_pirate:  " + flag_pirate);
+
+            // decorate car_name with working samples
             car_name = car_name + " " + umbrella_str + flag_pirate;
-            
 
+            //string decoration = flag_pirate;
+            //Debug.Log("decoration: " + decoration);
+            //car_name = car_name + flag_pirate; //decoration;
+         
             // -------------------------------------------------------------------------------------------
             int font_size = 100;
 
@@ -695,19 +724,3 @@ namespace tk
     }
 }
 
-/*
- rbx https://stackoverflow.com/questions/4184190/unicode-to-string-conversion-in-c-sharp
-private string BytesToString(byte[] Bytes)
-{
-  MemoryStream MS = new MemoryStream(Bytes);
-  StreamReader SR = new StreamReader(MS);
-  string S = SR.ReadToEnd();
-  SR.Close();
-  return S;
-}
-
-private string ToUnicode(string S)
-{
-  return BytesToString(new UnicodeEncoding().GetBytes(S));
-}
-*/
