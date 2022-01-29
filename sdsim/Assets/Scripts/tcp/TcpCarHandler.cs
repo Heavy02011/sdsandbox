@@ -381,6 +381,9 @@ namespace tk
             Debug.Log("Got car config message");
 
             /* 
+
+                // https://docs.microsoft.com/en-us/dotnet/api/system.text.encoding.convert?redirectedfrom=MSDN&view=net-6.0#System_Text_Encoding_Convert_System_Text_Encoding_System_Text_Encoding_System_Byte___
+                
                 interactive c#
                 // https://docs.microsoft.com/en-us/dotnet/csharp/tour-of-csharp/tutorials/hello-world?tutorial-step=1
 
@@ -418,6 +421,9 @@ namespace tk
             
             // -------------------------------------------------------------------------------------------
 
+            // setup a new car_name_new string
+            string car_name_new = "";
+
             // working unicode sample strings        
             string  flag_pirate = Encoding.UTF8.GetString(Encoding.Default.GetBytes("\uD83C\uDFF4\u200D\u2620\uFE0F"));
             string  umbrella_str = Char.Parse("\u2602").ToString();
@@ -437,23 +443,38 @@ namespace tk
             Debug.Log("umbrella_str: " + umbrella_str);
             Debug.Log("flag_pirate:  " + flag_pirate);
 
-            // decorate car_name with working samples
-            // DIS car_name = car_name + " " + umbrella_str + flag_pirate;
             // split car_name into a string without "\" and with "\"
             string[] car_name_split = car_name.Split('\\');
+            // add the first string to the new string
+            car_name_new += car_name_split[0];
             // number of strings in car_name_split
             int car_name_split_count = car_name_split.Length;
             // Debug Output of car_name_split
             Debug.Log("car_name_split_count: " + car_name_split_count);
-            for (int i = 0; i < car_name_split_count; i++)
+            string decoration = "";
+            for (int i = 1; i < car_name_split_count; i++)
             {
                 Debug.Log("car_name_split[" + i + "]: " + car_name_split[i]);
+                Debug.Log("decoration: " + decoration);
+                //decoration += "\\"+car_name_split[i];
+                decoration += car_name_split[i];
+                // add the string to the new string
             }
+            Debug.Log("decoration before: " + decoration);
+            // enclose the decoration string with """
+            //decoration = "\"" + decoration + "\"";
+            // convert decoration into a unicode string
+            string decoration_unicode = ToUnicode(decoration);
+            //string decoration_unicode = ToUnicode(2602); // fake
 
-            string decoration = Encoding.UTF8.GetString(Encoding.Default.GetBytes(car_name));
-            //string decoration = "_decor_"; //flag_pirate;
-            Debug.Log("decoration: " + decoration);
-            car_name = car_name + decoration;
+            //decoration = Encoding.UTF8.GetString(Encoding.Default.GetBytes(decoration));
+            //decoration = umbrella_str; // fake!!!
+            Debug.Log("decoration after : " + decoration_unicode);
+            car_name_new += decoration_unicode;
+
+            // set new car_name
+            car_name = car_name_new;
+            Debug.Log("car_name (new): " + car_name);
          
             // -------------------------------------------------------------------------------------------
             int font_size = 100;
