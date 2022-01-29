@@ -383,7 +383,7 @@ namespace tk
             /* 
 
                 // https://docs.microsoft.com/en-us/dotnet/api/system.text.encoding.convert?redirectedfrom=MSDN&view=net-6.0#System_Text_Encoding_Convert_System_Text_Encoding_System_Text_Encoding_System_Byte___
-                
+
                 interactive c#
                 // https://docs.microsoft.com/en-us/dotnet/csharp/tour-of-csharp/tutorials/hello-world?tutorial-step=1
 
@@ -473,7 +473,10 @@ namespace tk
             car_name_new += decoration_unicode;
 
             // set new car_name
-            car_name = car_name_new;
+            Debug.Log("decoration    : " + decoration);
+            Debug.Log("car_name (old): " + car_name);
+            string car_name_parsed = ParseUnicodeString(decoration);
+            car_name = car_name_new + car_name_parsed;
             Debug.Log("car_name (new): " + car_name);
          
             // -------------------------------------------------------------------------------------------
@@ -484,6 +487,29 @@ namespace tk
 
             if (carObj != null && car_name != "Racer Name")
                 UnityMainThreadDispatcher.Instance().Enqueue(SetCarConfig(body_style, body_r, body_g, body_b, car_name, font_size));
+        }
+        public static string ParseUnicodeString(string unicodeString)
+        {
+                // Create two different encodings.
+                Encoding ascii = Encoding.ASCII;
+                Encoding unicode = Encoding.Unicode;
+                // Convert the string into a byte array.
+                byte[] unicodeBytes = unicode.GetBytes(unicodeString);
+                // Perform the conversion from one encoding to the other.
+                byte[] asciiBytes = Encoding.Convert(unicode, ascii, unicodeBytes);
+                    
+                // Convert the new byte[] into a char[] and then into a string.
+                char[] asciiChars = new char[ascii.GetCharCount(asciiBytes, 0, asciiBytes.Length)];
+                ascii.GetChars(asciiBytes, 0, asciiBytes.Length, asciiChars, 0);
+                string asciiString = new string(asciiChars);
+                // Convert the new byte[] into a char[] and then into a string.
+                char[] unicodeChars = new char[unicode.GetCharCount(unicodeBytes, 0, unicodeBytes.Length)];
+                unicode.GetChars(unicodeBytes, 0, unicodeBytes.Length, unicodeChars, 0);
+                string unicodeString_out = new string(unicodeChars);
+                // Display the strings created before and after the conversion.
+                Console.WriteLine("Original string: {0}", unicodeString);
+                Console.WriteLine("Ascii converted string: {0}", asciiString);
+            return unicodeString_out;
         }
 
         IEnumerator SetCarConfig(string body_style, int body_r, int body_g, int body_b, string car_name, int font_size)
