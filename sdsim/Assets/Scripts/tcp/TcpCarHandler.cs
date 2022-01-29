@@ -451,20 +451,22 @@ namespace tk
             int car_name_split_count = car_name_split.Length;
             // Debug Output of car_name_split
             Debug.Log("car_name_split_count: " + car_name_split_count);
-            string decoration = "";
+            string decoration = "";    
+            string decoration_unicode = "";
             for (int i = 1; i < car_name_split_count; i++)
             {
                 Debug.Log("car_name_split[" + i + "]: " + car_name_split[i]);
                 Debug.Log("decoration: " + decoration);
                 //decoration += "\\"+car_name_split[i];
                 decoration += car_name_split[i];
+                decoration_unicode += ToUnicode(car_name_split[i]);
                 // add the string to the new string
             }
             Debug.Log("decoration before: " + decoration);
             // enclose the decoration string with """
             //decoration = "\"" + decoration + "\"";
             // convert decoration into a unicode string
-            string decoration_unicode = ToUnicode(decoration);
+            //string decoration_unicode = ToUnicode(decoration);
             //string decoration_unicode = ToUnicode(2602); // fake
 
             //decoration = Encoding.UTF8.GetString(Encoding.Default.GetBytes(decoration));
@@ -473,10 +475,12 @@ namespace tk
             car_name_new += decoration_unicode;
 
             // set new car_name
+            string car_name_new2 = Encoding.UTF8.GetString(Encoding.Unicode.GetBytes(car_name));
             Debug.Log("decoration    : " + decoration);
+            Debug.Log("decoration_unicode: " + decoration_unicode);
             Debug.Log("car_name (old): " + car_name);
             string car_name_parsed = ParseUnicodeString(decoration);
-            car_name = car_name_new + car_name_parsed;
+            car_name = car_name_new2; // + decoration_unicode;
             Debug.Log("car_name (new): " + car_name);
          
             // -------------------------------------------------------------------------------------------
