@@ -381,7 +381,8 @@ namespace tk
             Debug.Log("Got car config message");
 
             /* 
-                1. using System.Text;
+                interactive c#
+                // https://docs.microsoft.com/en-us/dotnet/csharp/tour-of-csharp/tutorials/hello-world?tutorial-step=1
 
                 RBX unicode testing
                 char upArrow = '\u25B2';
@@ -432,15 +433,27 @@ namespace tk
             string flag_russia      = "🇷🇺";
 
             // Debug Output of samples
+            Debug.Log("car_name:     " + car_name);
             Debug.Log("umbrella_str: " + umbrella_str);
             Debug.Log("flag_pirate:  " + flag_pirate);
 
             // decorate car_name with working samples
-            car_name = car_name + " " + umbrella_str + flag_pirate;
+            // DIS car_name = car_name + " " + umbrella_str + flag_pirate;
+            // split car_name into a string without "\" and with "\"
+            string[] car_name_split = car_name.Split('\\');
+            // number of strings in car_name_split
+            int car_name_split_count = car_name_split.Length;
+            // Debug Output of car_name_split
+            Debug.Log("car_name_split_count: " + car_name_split_count);
+            for (int i = 0; i < car_name_split_count; i++)
+            {
+                Debug.Log("car_name_split[" + i + "]: " + car_name_split[i]);
+            }
 
-            //string decoration = flag_pirate;
-            //Debug.Log("decoration: " + decoration);
-            //car_name = car_name + flag_pirate; //decoration;
+            string decoration = Encoding.UTF8.GetString(Encoding.Default.GetBytes(car_name));
+            //string decoration = "_decor_"; //flag_pirate;
+            Debug.Log("decoration: " + decoration);
+            car_name = car_name + decoration;
          
             // -------------------------------------------------------------------------------------------
             int font_size = 100;
