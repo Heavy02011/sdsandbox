@@ -445,43 +445,59 @@ namespace tk
 
             // split car_name into a string without "\" and with "\"
             string[] car_name_split = car_name.Split('\\');
+
             // add the first string to the new string
             car_name_new += car_name_split[0];
+            
             // number of strings in car_name_split
             int car_name_split_count = car_name_split.Length;
+            
             // Debug Output of car_name_split
             Debug.Log("car_name_split_count: " + car_name_split_count);
             string decoration = "";    
             string decoration_unicode = "";
+            string u1 = "";
+            string u2 = "";
+            string u_back = "\\";
+            string single_unicode = "";
+            
+            // loop through all "\u" in car_name_split
             for (int i = 1; i < car_name_split_count; i++)
             {
+                // get rid of the Unity bug for text mesh that adds a "\" before "\u" in the string
+                // source: https://forum.unity.com/threads/textmesh-pro-cant-parse-escape-characters-in-text-set-programmatically.544052/
+                // take first 4 characters of the string
+                string u = car_name_split[i].Substring(0, 4);
+                u1 = u_back + u;
+                // remove strings after a blank ")" or "}"
+                //u2 = Char.Parse("\\"+u).ToString(); 
+                //decoration = u1;
+                //decoration = decoration.Replace(u1, u2);
+
+                // add the string to the new string
+                decoration_unicode += decoration;
+
+                // debugging output
                 Debug.Log("car_name_split[" + i + "]: " + car_name_split[i]);
                 Debug.Log("decoration: " + decoration);
-                //decoration += "\\"+car_name_split[i];
-                decoration += car_name_split[i];
-                decoration_unicode += ToUnicode(car_name_split[i]);
-                // add the string to the new string
+                Debug.Log("u1: " + u1);
+                //Debug.Log("u2: " + u2);
             }
-            Debug.Log("decoration before: " + decoration);
-            // enclose the decoration string with """
-            //decoration = "\"" + decoration + "\"";
-            // convert decoration into a unicode string
-            //string decoration_unicode = ToUnicode(decoration);
-            //string decoration_unicode = ToUnicode(2602); // fake
-
-            //decoration = Encoding.UTF8.GetString(Encoding.Default.GetBytes(decoration));
-            //decoration = umbrella_str; // fake!!!
-            Debug.Log("decoration after : " + decoration_unicode);
+            Debug.Log("decoration_unicode : " + decoration_unicode);
             car_name_new += decoration_unicode;
 
             // set new car_name
-            string car_name_new2 = Encoding.UTF8.GetString(Encoding.Unicode.GetBytes(car_name));
-            Debug.Log("decoration    : " + decoration);
-            Debug.Log("decoration_unicode: " + decoration_unicode);
+            
+            // umbrella
+            //string u1 = "\\u2602";
+            //string u2 = Char.Parse("\u2602").ToString(); 
+            //car_name = car_name.Replace(u1, u2);
+
+            //car_name_new2 = car_name_new2.Replace("\\U", "\U");
             Debug.Log("car_name (old): " + car_name);
-            string car_name_parsed = ParseUnicodeString(decoration);
-            car_name = car_name_new2; // + decoration_unicode;
-            Debug.Log("car_name (new): " + car_name);
+            //string car_name_parsed = ParseUnicodeString(decoration);
+            car_name = car_name_new; // + decoration_unicode;
+            Debug.Log("car_name (new): " + car_name_new);
          
             // -------------------------------------------------------------------------------------------
             int font_size = 100;
