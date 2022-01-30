@@ -421,6 +421,7 @@ namespace tk
             
             // -------------------------------------------------------------------------------------------
 
+            /*
             // setup a new car_name_new string
             string car_name_new = "";
 
@@ -494,11 +495,13 @@ namespace tk
             //string u2 = Char.Parse("\u2602").ToString(); 
             //car_name = car_name.Replace(u1, u2);
 
-            //car_name_new2 = car_name_new2.Replace("\\U", "\U");
-            Debug.Log("car_name (old): " + car_name);
+            */
+            //car_name ="testing on Pi (\u03a0)";
+            Debug.Log("car_name (input): " + car_name);
             //string car_name_parsed = ParseUnicodeString(decoration);
-            car_name = car_name_new; // + decoration_unicode;
-            Debug.Log("car_name (new): " + car_name_new);
+            string car_name_output = ParseCarName(car_name);
+            car_name = car_name_output; //car_name_new; // + decoration_unicode;
+            Debug.Log("car_name (output): " + car_name_output);
          
             // -------------------------------------------------------------------------------------------
             int font_size = 100;
@@ -531,6 +534,139 @@ namespace tk
                 Console.WriteLine("Original string: {0}", unicodeString);
                 Console.WriteLine("Ascii converted string: {0}", asciiString);
             return unicodeString_out;
+        }
+        public static string ParseCarName(string car_name_input)
+        {
+            // set unicode strings that are replaced
+            string flag_france      = "🇫🇷";
+            string flag_germany     = "🇩🇪";
+            string flag_usa         = "🇺🇸";
+            string flag_canada      = "🇨🇦";
+            string flag_brazil      = "🇧🇷";
+            string flag_russia      = "🇷🇺";
+            string flag_pirate      = Encoding.UTF8.GetString(Encoding.Default.GetBytes("\uD83C\uDFF4\u200D\u2620\uFE0F"));
+            string pirate_str       = Char.Parse("\uFE0F").ToString();
+            string flag_checkered   = Encoding.UTF8.GetString(Encoding.Default.GetBytes("\uD83C")); //\uDFC1"));
+            string umbrella_str     = Char.Parse("\u2602").ToString();
+            string pi_str           = Encoding.UTF8.GetString(Encoding.Default.GetBytes("\u03a0"));
+
+            // split car_name into a string without "\" and with "\"
+            string[] car_name_split = car_name_input.Split('\\');
+
+            // loop through all "\u" in car_name_split
+            for (int i = 1; i < car_name_split.Length; i++)
+            {
+                // get rid of the Unity bug for text mesh that adds a "\" before "\u" in the string
+                // source: https://forum.unity.com/threads/textmesh-pro-cant-parse-escape-characters-in-text-set-programmatically.544052/
+                // take u and first 4 characters of the string
+                string u = car_name_split[i]; //.Substring(0, 5);
+
+                // debug logging
+                Debug.Log("car_name_split[" + i + "]: " + car_name_split[i]);
+                Debug.Log("u: " + u);
+
+                // replace the unicode string with the corresponding string
+                // if u contains "\u2602"
+                if (u.Contains(flag_france))
+                {
+                    car_name_split[i] = flag_france;
+                }
+                else if (u.Contains(flag_germany))
+                {
+                    car_name_split[i] = flag_germany;
+                }
+                else if (u.Contains(flag_usa))
+                {
+                    car_name_split[i] = flag_usa;
+                }
+                else if (u.Contains(flag_canada))
+                {
+                    car_name_split[i] = flag_canada;
+                }
+                else if (u.Contains(flag_brazil))
+                {
+                    car_name_split[i] = flag_brazil;
+                }
+                else if (u.Contains(flag_russia))
+                {
+                    car_name_split[i] = flag_russia;
+                }
+                else if (u.Contains("\uD83C\uDFF4\u200D\u2620\uFE0F"))
+                {
+                    car_name_split[i] = flag_pirate;
+                }
+                else if (u.Contains("uD83C"))
+                {
+                    car_name_split[i] = flag_checkered;
+                }
+                else if (u.Contains("u2602"))
+                {
+                    car_name_split[i] = umbrella_str;
+                }
+                else if (u.Contains("u03a0"))
+                {
+                    car_name_split[i] = pi_str;
+                }
+                else if (u.Contains("uFE0F"))
+                {
+                    car_name_split[i] = pirate_str;
+                }
+                else
+                {
+                    // do nothing
+                }
+
+
+                /*
+                if (u == "\u2602") // umbrella
+                {
+                    // remove strings after a blank ")" or "}"
+                    car_name_split[i] = umbrella_str;
+                } else if (u=="\u2620") // pirate flag
+                {
+                    // remove strings after a blank ")" or "}"
+                    car_name_split[i] = flag_pirate;
+                } else if (u=="\uD83C\uDFC1") // checkered flag
+                {
+                    // remove strings after a blank ")" or "}"
+                    car_name_split[i] = flag_checkered;
+                } else if (u=="\uD83C\uDFF4") // pirate flag
+                {
+                    // remove strings after a blank ")" or "}"
+                    car_name_split[i] = flag_pirate;
+                } else if (u=="\uD83C\uDDE6") // germany flag
+                {
+                    // remove strings after a blank ")" or "}"
+                    car_name_split[i] = flag_germany;
+                } else if (u=="\uD83C\uDDE8") // france flag
+                {
+                    // remove strings after a blank ")" or "}"
+                    car_name_split[i] = flag_france;
+                } else if (u=="\uD83C\uDDEA") // usa flag
+                {
+                    // remove strings after a blank ")" or "}"
+                    car_name_split[i] = flag_usa;
+                } else if (u=="\uD83C\uDDE8") // canada flag
+                {
+                    // remove strings after a blank ")" or "}"
+                    car_name_split[i] = flag_canada;
+                } else if (u=="\uD83C\uDDE9") // brazil flag
+                {
+                    // remove strings after a blank ")" or "}"
+                    car_name_split[i] = flag_brazil;
+                } else if (u=="\uD83C\uDDEA") // russia flag
+                {
+                    // remove strings after a blank ")" or "}"
+                    car_name_split[i] = flag_russia;
+                }
+                */
+
+            }
+
+            // join the car_name_split string back together
+            string car_name_output = string.Join("", car_name_split);
+
+            return car_name_output;
         }
 
         IEnumerator SetCarConfig(string body_style, int body_r, int body_g, int body_b, string car_name, int font_size)
