@@ -466,13 +466,14 @@ namespace tk
             {
                 // get rid of the Unity bug for text mesh that adds a "\" before "\u" in the string
                 // source: https://forum.unity.com/threads/textmesh-pro-cant-parse-escape-characters-in-text-set-programmatically.544052/
-                // take first 4 characters of the string
-                string u = car_name_split[i].Substring(0, 4);
+                // take u and first 4 characters of the string
+                string u = car_name_split[i].Substring(0, 5);
                 u1 = u_back + u;
                 // remove strings after a blank ")" or "}"
-                //u2 = Char.Parse("\\"+u).ToString(); 
-                //decoration = u1;
-                //decoration = decoration.Replace(u1, u2);
+                //u2 = Char.Parse("\\"+u).ToString(); // not working
+                //u2 = Char.Parse(u1).ToString(); 
+                // decoration = u1;
+                // decoration = decoration.Replace(u1, u2);
 
                 // add the string to the new string
                 decoration_unicode += decoration;
@@ -488,7 +489,7 @@ namespace tk
 
             // set new car_name
             
-            // umbrella
+            // umbrella working!!
             //string u1 = "\\u2602";
             //string u2 = Char.Parse("\u2602").ToString(); 
             //car_name = car_name.Replace(u1, u2);
