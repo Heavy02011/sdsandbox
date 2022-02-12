@@ -537,6 +537,13 @@ namespace tk
         }
         public static string ParseCarName(string car_name_input)
         {
+
+            //work with following unicodes 
+            // https://unicode-table.com/en/blocks/geometric-shapes/
+            // https://unicode-table.com/en/blocks/miscellaneous-symbols/
+            // Unity import fonts
+            // https://www.youtube.com/watch?v=qzJNIGCFFtY 
+            
             // set unicode strings that are replaced
             string flag_france      = "🇫🇷";
             string flag_germany     = "🇩🇪";
@@ -545,7 +552,7 @@ namespace tk
             string flag_brazil      = "🇧🇷";
             string flag_russia      = "🇷🇺";
             string flag_pirate      = Encoding.UTF8.GetString(Encoding.Default.GetBytes("\uD83C\uDFF4\u200D\u2620\uFE0F"));
-            string pirate_str       = Char.Parse("\uFE0F").ToString();
+            string pirate_str       = Char.Parse("\u2620").ToString();
             string flag_checkered   = Encoding.UTF8.GetString(Encoding.Default.GetBytes("\uD83C")); //\uDFC1"));
             string umbrella_str     = Char.Parse("\u2602").ToString();
             string pi_str           = Encoding.UTF8.GetString(Encoding.Default.GetBytes("\u03a0"));
@@ -591,29 +598,42 @@ namespace tk
                 {
                     car_name_split[i] = flag_russia;
                 }
-                else if (u.Contains("\uD83C\uDFF4\u200D\u2620\uFE0F"))
+                else if (u.Contains("\u2620"))
                 {
                     car_name_split[i] = flag_pirate;
                 }
-                else if (u.Contains("uD83C"))
+                else if (u.Contains("ud83c"))
                 {
-                    car_name_split[i] = flag_checkered;
+                    car_name_split[i] = flag_checkered; //? in box
                 }
                 else if (u.Contains("u2602"))
                 {
-                    car_name_split[i] = umbrella_str;
+                    car_name_split[i] = umbrella_str; // ok
                 }
                 else if (u.Contains("u03a0"))
                 {
-                    car_name_split[i] = pi_str;
+                    car_name_split[i] = pi_str; // ok
                 }
-                else if (u.Contains("uFE0F"))
+                else if (u.Contains("ufe0f"))
                 {
-                    car_name_split[i] = pirate_str;
+                    car_name_split[i] = pirate_str; //error
+                }
+                else if (u.Contains("u25a1"))
+                {
+                    car_name_split[i] = Char.Parse("\u25a1").ToString();
+                }
+                else if (u.Contains("uffe0"))
+                {
+                    car_name_split[i] = flag_usa; // blank
                 }
                 else
                 {
-                    // do nothing
+                    /* NOT workingh
+                    string mychar = "\\"+u;
+                    // convert mychar to a char
+                    char mychar_char = Char.Parse(mychar);
+                    car_name_split[i] = mychar_char.ToString();
+                    */
                 }
 
 
