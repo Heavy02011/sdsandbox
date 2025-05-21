@@ -33,7 +33,7 @@ def get_default_config():
     return {
         'track_width': 0.8,
         'segment_length': 5.0,
-        'turn_angle_max': 45,
+        'turn_angle_max': 45, # Für 'straight_turn'
         'num_segments_random': 20,
         'color_centerline': 'black',
         'color_left_border': 'blue',
@@ -41,40 +41,118 @@ def get_default_config():
         'alternating_colors_segments': ['lightgrey', 'darkgrey'],
         'csv_delimiter': ',',
         'script_path_example': '/workspaces/sdsandbox/notebook/tracks/scripted_track1.txt',
-        'csv_path_example': '/workspaces/sdsandbox/notebook/tracks/centerline1.csv'
+        'csv_path_example': '/workspaces/sdsandbox/notebook/tracks/centerline1.csv',
+        # Neue Parameter für zufällige Trackgenerierung mit Bögen
+        'curve_types_random': ['straight_turn', 'arc'], # Mögliche Segmenttypen
+        'arc_radius_min': 5.0,                             # Minimaler Radius für einen Bogen
+        'arc_radius_max': 20.0,                            # Maximaler Radius für einen Bogen
+        'arc_angle_max': 90.0,                             # Maximaler Winkel (in Grad) für ein Bogensegment
+        'arc_num_points': 10,                              # Anzahl der Punkte zur Approximation eines Bogens
+        'max_closing_length_factor': 1.5                   # Maximales Verhältnis der Schließungslänge zur durchschnittlichen Segmentlänge
     }
 
 config = load_config()
 
-# Stelle sicher, dass die Beispielpfade in der Konfiguration vorhanden sind
-if 'script_path_example' not in config:
-    config['script_path_example'] = get_default_config()['script_path_example']
-if 'csv_path_example' not in config:
-    config['csv_path_example'] = get_default_config()['csv_path_example']
+# Stelle sicher, dass die Beispielpfade und neuen Kurvenparameter in der Konfiguration vorhanden sind
+default_conf = get_default_config()
+for key in ['script_path_example', 'csv_path_example', 'curve_types_random', 'arc_radius_min', 
+           'arc_radius_max', 'arc_angle_max', 'arc_num_points', 'max_closing_length_factor']:
+    if key not in config:
+        config[key] = default_conf[key]
 
 
 def generate_random_track(closed_track=False): # Parameter hinzugefügt
-    """Generiert einen zufälligen Track, optional geschlossen."""
+    """Generiert einen zufälligen Track, optional geschlossen, mit verschiedenen Segmenttypen."""
     track_points = [(0, 0)]
-    current_angle = 0
+    current_angle_rad = 0 # Winkel in Radiant
     num_segments = config.get('num_segments_random', 20)
-    segment_len = config.get('segment_length', 5.0)
-    max_angle = config.get('turn_angle_max', 45)
+    
+    # Parameter für 'straight_turn'
+    segment_len_straight = config.get('segment_length', 5.0)
+    max_angle_turn_deg = config.get('turn_angle_max', 45)
+
+    # Parameter für 'arc'
+    curve_types = config.get('curve_types_random', ['straight_turn', 'arc'])
+    arc_radius_min = config.get('arc_radius_min', 5.0)
+    arc_radius_max = config.get('arc_radius_max', 20.0)
+    arc_angle_max_deg = config.get('arc_angle_max', 90.0)
+    arc_num_points = config.get('arc_num_points', 10)
+    
+    # Parameter für das Schließen des Tracks
+    max_closing_length_factor = config.get('max_closing_length_factor', 1.5)
 
     for _ in range(num_segments):
-        turn_angle = random.uniform(-max_angle, max_angle)
-        current_angle += np.deg2rad(turn_angle)
-        dx = segment_len * np.cos(current_angle)
-        dy = segment_len * np.sin(current_angle)
-        new_point = (track_points[-1][0] + dx, track_points[-1][1] + dy)
-        track_points.append(new_point)
-    
+        segment_type = random.choice(curve_types)
+        last_x, last_y = track_points[-1]
+
+        if segment_type == 'straight_turn':
+            turn_angle_deg = random.uniform(-max_angle_turn_deg, max_angle_turn_deg)
+            current_angle_rad += np.deg2rad(turn_angle_deg)
+            dx = segment_len_straight * np.cos(current_angle_rad)
+            dy = segment_len_straight * np.sin(current_angle_rad)
+            new_point = (last_x + dx, last_y + dy)
+            track_points.append(new_point)
+        
+        elif segment_type == 'arc':
+            arc_radius = random.uniform(arc_radius_min, arc_radius_max)
+            arc_angle_segment_deg = random.uniform(-arc_angle_max_deg, arc_angle_max_deg)
+            if arc_angle_segment_deg == 0: # Vermeide Division durch Null oder keine Bewegung
+                arc_angle_segment_deg = random.choice([-15, 15]) # Kleiner Bogen, wenn zufällig 0
+            
+            arc_angle_segment_rad = np.deg2rad(arc_angle_segment_deg)
+            
+            # Richtung des Bogens (links oder rechts)
+            # Positive arc_angle_segment_deg -> Linkskurve (gegen den Uhrzeigersinn)
+            # Negative arc_angle_segment_deg -> Rechtskurve (im Uhrzeigersinn)
+
+            # Mittelpunkt des Kreises, auf dem der Bogen liegt
+            # Der Mittelpunkt liegt senkrecht zur aktuellen Bewegungsrichtung
+            # im Abstand des Radius.
+            # current_angle_rad ist die Richtung, aus der wir kommen.
+            # Die Normale dazu ist current_angle_rad - PI/2 (für Linkskurve) oder + PI/2 (für Rechtskurve)
+            
+            if arc_angle_segment_rad > 0: # Linkskurve
+                center_angle_rad = current_angle_rad + np.pi / 2
+            else: # Rechtskurve
+                center_angle_rad = current_angle_rad - np.pi / 2
+                
+            center_x = last_x + arc_radius * np.cos(center_angle_rad)
+            center_y = last_y + arc_radius * np.sin(center_angle_rad)
+
+            # Startwinkel des Bogens relativ zum Kreismittelpunkt
+            # Dies ist der Winkel vom Kreismittelpunkt zum letzten Punkt des Tracks
+            start_angle_arc_rad = np.arctan2(last_y - center_y, last_x - center_x)
+
+            for k in range(1, arc_num_points + 1):
+                # Interpoliere den Winkel entlang des Bogens
+                # arc_angle_segment_rad ist der Gesamtwinkel des Bogens
+                # k durchläuft die Punkte des Bogens
+                current_segment_angle_rad = start_angle_arc_rad + (arc_angle_segment_rad * k / arc_num_points)
+                
+                arc_point_x = center_x + arc_radius * np.cos(current_segment_angle_rad)
+                arc_point_y = center_y + arc_radius * np.sin(current_segment_angle_rad)
+                track_points.append((arc_point_x, arc_point_y))
+
+            # Update current_angle_rad für das nächste Segment.
+            # Der neue current_angle_rad ist die Tangente am Ende des Bogens.
+            # Die Tangente steht senkrecht auf dem Radiusvektor vom Zentrum zum Endpunkt des Bogens.
+            # Winkel vom Zentrum zum Endpunkt: start_angle_arc_rad + arc_angle_segment_rad
+            # Tangentenwinkel: (start_angle_arc_rad + arc_angle_segment_rad) + PI/2 (für Linkskurve)
+            # oder (start_angle_arc_rad + arc_angle_segment_rad) - PI/2 (für Rechtskurve)
+            
+            final_arc_point_angle_rad = start_angle_arc_rad + arc_angle_segment_rad
+            if arc_angle_segment_rad > 0: # Linkskurve
+                 current_angle_rad = final_arc_point_angle_rad + np.pi / 2
+            else: # Rechtskurve
+                 current_angle_rad = final_arc_point_angle_rad - np.pi / 2
+            
+            # Normalisiere den Winkel auf [-pi, pi] oder [0, 2pi] um große Werte zu vermeiden
+            current_angle_rad = np.arctan2(np.sin(current_angle_rad), np.cos(current_angle_rad))
+
     if closed_track and len(track_points) > 1:
-        # Füge den ersten Punkt am Ende hinzu, um den Track zu schließen
-        # Dies ist eine einfache Methode. Für eine glatte Schließung wären komplexere Algorithmen nötig,
-        # z.B. Anpassung der letzten Segmente oder Spline-Interpolation zum Startpunkt.
-        track_points.append(track_points[0])
-        print("Zufälliger Track wurde geschlossen.")
+        # Verwende die Hilfsfunktion, um den Track glatt zu schließen
+        track_points = close_track_smoothly(track_points)
+        print("Zufälliger Track wurde glatt geschlossen.")
 
     return track_points
 
@@ -96,8 +174,8 @@ def load_scripted_track(script_path, closed_track=False): # Parameter hinzugefü
         return []
     
     if closed_track and track_points and track_points[0] != track_points[-1]:
-        track_points.append(track_points[0])
-        print(f"Skriptbasierter Track ({script_path}) wurde geschlossen.")
+        track_points = close_track_smoothly(track_points)
+        print(f"Skriptbasierter Track ({script_path}) wurde glatt geschlossen.")
         
     return track_points
 
@@ -126,8 +204,8 @@ def load_csv_track(csv_path, closed_track=False): # Parameter hinzugefügt
         return []
 
     if closed_track and track_points and track_points[0] != track_points[-1]:
-        track_points.append(track_points[0])
-        print(f"CSV-basierter Track ({csv_path}) wurde geschlossen.")
+        track_points = close_track_smoothly(track_points)
+        print(f"CSV-basierter Track ({csv_path}) wurde glatt geschlossen.")
 
     return track_points
 
@@ -292,3 +370,58 @@ ensure_example_files()
 
 print("trackgenlib.py wurde initialisiert und Konfiguration geladen.")
 print(f"Konfiguration: track_width={config.get('track_width')}, script_example='{config.get('script_path_example')}', csv_example='{config.get('csv_path_example')}'")
+
+def close_track_smoothly(track_points):
+    """Schließt einen Track glatt, ohne zu große Segmente zum Startpunkt zu erzeugen.
+    
+    Args:
+        track_points: Liste von (x, y) Koordinaten des Tracks
+        
+    Returns:
+        Die ergänzte Liste von Punkten mit glatter Schließung zum Startpunkt
+    """
+    if not track_points or len(track_points) < 2:
+        return track_points
+        
+    # Wenn der Track bereits geschlossen ist, nichts zu tun
+    if track_points[0] == track_points[-1]:
+        return track_points
+        
+    # Berechne die durchschnittliche Segmentlänge
+    total_length = 0.0
+    segment_lengths = []
+    for i in range(1, len(track_points)):
+        dx = track_points[i][0] - track_points[i-1][0]
+        dy = track_points[i][1] - track_points[i-1][1]
+        segment_length = np.sqrt(dx**2 + dy**2)
+        segment_lengths.append(segment_length)
+        total_length += segment_length
+        
+    avg_segment_length = total_length / len(segment_lengths) if segment_lengths else 1.0
+    
+    # Berechne die Distanz zwischen dem letzten und dem ersten Punkt
+    first_point = track_points[0]
+    last_point = track_points[-1]
+    dx_closing = first_point[0] - last_point[0]
+    dy_closing = first_point[1] - last_point[1]
+    closing_distance = np.sqrt(dx_closing**2 + dy_closing**2)
+    
+    # Wenn die Schließungsdistanz zu groß ist, füge zusätzliche Punkte hinzu
+    max_closing_length = avg_segment_length * config.get('max_closing_length_factor', 1.5)
+    
+    if closing_distance > max_closing_length:
+        # Berechne, wie viele zusätzliche Punkte benötigt werden
+        num_points = int(np.ceil(closing_distance / avg_segment_length))
+        
+        # Füge die zusätzlichen Punkte hinzu
+        for i in range(1, num_points):
+            # Lineare Interpolation zwischen letztem und erstem Punkt
+            fraction = i / num_points
+            x = last_point[0] + fraction * dx_closing
+            y = last_point[1] + fraction * dy_closing
+            track_points.append((x, y))
+            
+    # Schließlich füge den ersten Punkt hinzu, um den Track zu schließen
+    track_points.append(first_point)
+    
+    return track_points
