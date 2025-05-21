@@ -68,3 +68,5 @@ dataset
 /src/camera_b.png
 /sdsim/Assets/StreamingAssets
 /sdsim/Assets/AssetBundles
+
+__pycache__
