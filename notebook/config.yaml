@@ -1,0 +1,19 @@
+# Konfiguration für Track-Generierung
+track_width: 10.0  # Breite der Strecke
+segment_length: 5.0 # Länge eines einzelnen Tracksegments für zufällige Generierung
+turn_angle_max: 45  # Maximaler Kurvenwinkel in Grad für zufällige Generierung
+num_segments_random: 20 # Anzahl der Segmente für einen zufälligen Track
+
+# Farben für die Darstellung
+color_centerline: 'black'
+color_left_border: 'blue'
+color_right_border: 'red'
+alternating_colors_segments: ['lightgrey', 'darkgrey']
+
+# CSV-Konfiguration
+csv_delimiter: ','
+
+# Skript-Konfiguration
+# Pfade sind relativ zum notebook-Verzeichnis oder absolut
+script_path_example: '/workspaces/sdsandbox/notebook/tracks/scripted_track1.txt'
+csv_path_example: '/workspaces/sdsandbox/notebook/tracks/centerline1.csv'

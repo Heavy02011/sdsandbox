@@ -1,0 +1,10 @@
+x,y,comment
+0,0,start_node
+5,2,node1
+10,5,node2
+15,3,node3
+20,0,node4
+25,-2,node5
+20,-5,node6
+10,-6,node7
+0,-3,end_node
