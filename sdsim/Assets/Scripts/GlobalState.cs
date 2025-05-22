@@ -4,7 +4,7 @@ using UnityEngine;
 
 public static class GlobalState
 {
-    public static string version = "v21.12.11";
+    public static string version = "v22.05.30";
     public static string host = "0.0.0.0";
     public static int port = 9091;
     public static int portPrivateAPI = 9092;
@@ -20,7 +20,7 @@ public static class GlobalState
     public static bool generateTrees = true;
     public static bool generateRandomCones = true;
     public static bool randomLight = true;
-    public static bool overheadCamera = true;
+    public static bool overheadCamera = false;
     public static bool raceCameras = false;
     public static bool paceCar = false;
     public static bool manualDriving = false;
