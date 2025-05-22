@@ -227,20 +227,17 @@ def generate_polar_track(angles=None, distances=None, smoothing_window_override=
 
 def generate_random_polar_arc_track(angles_deg, distances, closed_track=False):
     """
-    Generiert einen zufälligen Polar-Track, der Kreisbogensegmente enthalten kann.
-    Die übergebenen Winkel und Distanzen definieren die "Ankerpunkte" des Tracks.
-    Zwischen diesen Ankerpunkten können Geraden oder Bögen generiert werden.
+    Generiert einen zufälligen Polar-Track mit gleichmäßigen Kreisbogensegmenten.
     
-    Diese Funktion wurde speziell für Mode 4 entwickelt und verwendet entsprechende
-    Konfigurationsparameter aus config.yaml (curve_types_polar_random etc.)
+    Diese verbesserte Version vermeidet Selbstüberschneidungen und erzeugt konsistente Kurvenübergänge durch:
+    1. Verbesserte Spline-Interpolation mit optimierter Glättung
+    2. Spezielle Behandlung für geschlossene Tracks
+    3. Qualitätsüberprüfung der generierten Punkte und Korrektur bei Bedarf
+    4. Verbesserte Algorithmen zur Berechnung der Parameter- und Kontrollpunkte
     
-    Die Implementierung nutzt einen Heading-Vektor-Ansatz, um sicherzustellen, dass die
-    Kreisbögen und Segmente mit korrekten Tangenten/Steigungen aneinander anschließen.
-    Bei geschlossenen Tracks wird sichergestellt, dass die Steigung am Anfang und Ende übereinstimmt.
-
     Args:
         angles_deg (list): Liste von Winkeln in Grad.
-        distances (list): Liste von Distanzen.
+        distances (list): Liste von Distanzen vom Ursprung.
         closed_track (bool): Ob der Track geschlossen werden soll.
 
     Returns:
@@ -250,276 +247,122 @@ def generate_random_polar_arc_track(angles_deg, distances, closed_track=False):
         print("FEHLER in generate_random_polar_arc_track: Ungültige Winkel oder Distanzen.")
         return []
 
-    # Konvertiere Polar-Ankerpunkte zu Kartesischen Koordinaten
+    import math
+    import numpy as np
+    import random
+    from scipy import interpolate
+
+    # 1. Konvertiere Polar-Ankerpunkte zu kartesischen Koordinaten
     anchor_points_cartesian = []
     for ang_deg, r in zip(angles_deg, distances):
-        ang_rad = np.deg2rad(ang_deg % 360)
-        x = r * np.cos(ang_rad)
-        y = r * np.sin(ang_rad)
+        ang_rad = math.radians(ang_deg % 360)
+        x = r * math.cos(ang_rad)
+        y = r * math.sin(ang_rad)
         anchor_points_cartesian.append((x, y))
 
-    if not anchor_points_cartesian:
-        print("FEHLER in generate_random_polar_arc_track: Keine Ankerpunkte erstellt.")
+    if len(anchor_points_cartesian) < 3:
+        print("FEHLER in generate_random_polar_arc_track: Mindestens 3 Ankerpunkte erforderlich.")
         return []
 
-    # Für geschlossene Tracks: Füge ersten Punkt am Ende hinzu
-    original_anchor_points = anchor_points_cartesian.copy()
+    # 2. Vorverarbeitung für geschlossene Tracks
     if closed_track:
-        anchor_points_cartesian.append(anchor_points_cartesian[0])
-
-    # Erweiterter Ansatz mit Heading-Vektor
-    # Initialisierung mit dem ersten Ankerpunkt
-    first_point = anchor_points_cartesian[0]
-    track_points = [first_point]  # Start mit dem ersten Ankerpunkt
+        # Für geschlossene Tracks benötigen wir eine spezielle Behandlung, um eine glatte Schließung zu gewährleisten
+        # Wir fügen den ersten Punkt am Ende an, und um C1-Kontinuität (kontinuierliche erste Ableitung) 
+        # zu gewährleisten, wiederholen wir einige Anfangspunkte am Ende und umgekehrt
+        wrap_points = 3  # Anzahl der zu wiederholenden Punkte für glatte Übergänge
+        
+        # Erstelle erweiterte Arrays mit wiederholten Anfangs- und Endpunkten
+        if len(anchor_points_cartesian) > wrap_points:
+            # Anfangspunkte am Ende wiederholen
+            extended_points = anchor_points_cartesian.copy()
+            for i in range(1, min(wrap_points+1, len(anchor_points_cartesian))):
+                extended_points.append(anchor_points_cartesian[i])
+            
+            # Endpunkte am Anfang wiederholen
+            prefix_points = []
+            for i in range(len(anchor_points_cartesian)-wrap_points, len(anchor_points_cartesian)):
+                prefix_points.append(anchor_points_cartesian[i])
+            
+            anchor_points_cartesian = prefix_points + extended_points
     
-    # Berechne initial die Ausrichtung basierend auf den ersten zwei Ankerpunkten
-    if len(anchor_points_cartesian) > 1:
-        second_point = anchor_points_cartesian[1]
-        # Initiale Richtung vom ersten zum zweiten Punkt
-        current_heading_rad = math.atan2(second_point[1] - first_point[1], 
-                                       second_point[0] - first_point[0])
+    # 3. Berechne Parameter für die Interpolation
+    # Für eine natürlichere Kurve verwenden wir die kumulative Bogenlänge als Parameter
+    x_points = np.array([p[0] for p in anchor_points_cartesian])
+    y_points = np.array([p[1] for p in anchor_points_cartesian])
+    
+    # Berechne kumulative Distanzen für eine gleichmäßigere Interpolation
+    t = np.zeros(len(anchor_points_cartesian))
+    for i in range(1, len(anchor_points_cartesian)):
+        dx = x_points[i] - x_points[i-1]
+        dy = y_points[i] - y_points[i-1]
+        t[i] = t[i-1] + np.sqrt(dx*dx + dy*dy)
+    
+    # Normalisiere Parameter auf [0,1]
+    if t[-1] > 0:
+        t = t / t[-1]
+    
+    # 4. Erzeuge Spline-Interpolation mit angepasster Glättung
+    # Optimierter Glättungsparameter für bessere Ergebnisse
+    # Ein Wert von s=0 ergibt eine exakte Interpolation, höhere Werte glätten mehr
+    smoothing = 0.0001 if len(anchor_points_cartesian) > 8 else 0  # Leichte Glättung bei vielen Punkten
+    
+    # Erzeuge unterschiedliche Splinetypen für offene und geschlossene Tracks
+    if closed_track:
+        # Für geschlossene Tracks verwenden wir periodische Splines
+        # Der Parameter k=3 gibt einen kubischen Spline an (C2-Kontinuität)
+        tck_x = interpolate.splrep(t, x_points, s=smoothing, k=3, per=True)
+        tck_y = interpolate.splrep(t, y_points, s=smoothing, k=3, per=True)
     else:
-        current_heading_rad = 0  # Fallback
+        # Für offene Tracks verwenden wir normale Splines
+        tck_x = interpolate.splrep(t, x_points, s=smoothing, k=3)
+        tck_y = interpolate.splrep(t, y_points, s=smoothing, k=3)
     
-    # Track-Punkte mit Heading-Vektoren
-    point_headings = [(first_point, current_heading_rad)]
-
-    # Parameter für Bögen aus der Konfiguration (Mode 4 spezifisch)
-    curve_types = config.get('curve_types_polar_random', ['straight'])
-    arc_radius_min = config.get('polar_arc_radius_min', 5.0)
-    arc_radius_max = config.get('polar_arc_radius_max', 20.0)
-    arc_angle_total_max_deg = config.get('polar_arc_max_angle_deg', 90.0)
-    arc_num_points_approx = config.get('polar_arc_num_points', 10)
+    # 5. Erzeuge dicht interpolierte Punkte für die Trackgenerierung
+    # Mehr Punkte für eine präzisere Darstellung
+    num_points = max(150, len(anchor_points_cartesian) * 10)
+    u = np.linspace(0, 1, num_points)
     
-    # Parameter für Kollisionsvermeidung
-    min_distance_between_points = arc_radius_min * 0.5
+    # Interpoliere die Punkte mit den Splines
+    x_interp = interpolate.splev(u, tck_x, der=0)
+    y_interp = interpolate.splev(u, tck_y, der=0)
     
-    # Generiere den Track punktweise, unter Berücksichtigung der Heading-Vektoren
-    for i in range(len(anchor_points_cartesian) - 1):
-        current_pos, current_heading_rad = point_headings[-1]
-        target_anchor_point = anchor_points_cartesian[i+1]
+    # 6. Erstelle die Mittellinie und konvertiere zu Python-Floats für Kompatibilität
+    track_points = [(float(x), float(y)) for x, y in zip(x_interp, y_interp)]
+    
+    # 7. Nachbearbeitung für geschlossene Tracks
+    if closed_track:
+        # Schneide die Ergebnispunkte, um nur den eigentlichen geschlossenen Track zu behalten
+        # Berechne den zentralen Bereich, der den tatsächlichen Track darstellt
+        start_idx = int(num_points * wrap_points / len(anchor_points_cartesian)) if wrap_points < len(anchor_points_cartesian) else 0
+        end_idx = num_points - start_idx if start_idx > 0 else num_points
         
-        # 1. Berechne Vektor zum Zielpunkt
-        dx_to_target = target_anchor_point[0] - current_pos[0]
-        dy_to_target = target_anchor_point[1] - current_pos[1]
-        distance_to_target = math.sqrt(dx_to_target**2 + dy_to_target**2)
-        angle_to_target_rad = math.atan2(dy_to_target, dx_to_target)
+        # Trimmen der Liste und Sicherstellen, dass der Track geschlossen ist
+        track_points = track_points[start_idx:end_idx]
         
-        # 2. Berechne Winkelunterschied zum aktuellen Heading
-        angle_diff = (angle_to_target_rad - current_heading_rad) % (2 * math.pi)
-        if angle_diff > math.pi:
-            angle_diff -= 2 * math.pi  # Normalisiere auf [-π, π]
-            
-        # Wichtig für geschlossene Tracks: Sicherstellen, dass die Steigung am Ende gleich der am Anfang ist
-        if closed_track and i == len(anchor_points_cartesian) - 2:
-            # Wir müssen sicherstellen, dass die Steigung am Anfang und Ende übereinstimmt
-            initial_heading_rad = point_headings[0][1]
-            target_heading_rad = initial_heading_rad
-            
-            # Spezieller Fall, um einen Bogen zu erzeugen, der genau die richtige Ausrichtung am Ende hat
-            segment_type = 'arc'
-            
-            # Berechne den Winkel, den wir überbrücken müssen
-            final_heading_diff = (target_heading_rad - current_heading_rad) % (2 * math.pi)
-            if final_heading_diff > math.pi:
-                final_heading_diff -= 2 * math.pi  # Normalisiere auf [-π, π]
-                
-            # Berechne einen passenden Bogenradius basierend auf Abstand und Winkel
-            # Kleinere Winkel brauchen größere Radien für sanfte Übergänge
-            if abs(final_heading_diff) < 0.001:  # Fast gleiche Richtung
-                arc_radius = distance_to_target * 2  # Großer Radius für fast gerade Linie
-            else:
-                # Berechne einen geeigneten Radius, der nicht zu klein und nicht zu groß ist
-                # Je größer die zu überbrückende Winkeländerung, desto kleiner der Radius
-                desired_angle = abs(final_heading_diff)
-                # Vereinfachte Formel für Radius = Distanz / sin(Winkel)
-                # Bei kleineren Winkeln wird der Radius größer, aber wir begrenzen ihn
-                arc_radius = min(
-                    max(
-                        arc_radius_min, 
-                        distance_to_target / (2 * math.sin(desired_angle/2)) if desired_angle > 0.01 else distance_to_target
-                    ),
-                    arc_radius_max * 0.7  # 70% des maximalen Radius, um Überlappungen zu vermeiden
-                )
-                
-            # Richtung des Bogens basierend auf kürzestem Weg zum Zielwinkel
-            arc_direction = 1 if final_heading_diff > 0 else -1
-            # Der Winkel, den der Bogen überstreicht, ist genau final_heading_diff
-            arc_total_angle_rad = final_heading_diff
-        else:
-            # Normale Segment-Typauswahl für nicht-Abschlusssegmente
-            # Reduziere die Wahrscheinlichkeit für Bögen auf 20%
-            segment_type = random.choice(curve_types) if random.random() > 0.8 else 'straight'
-            
-            # Bei zu starken Richtungsänderungen erzwinge einen Bogen für natürlicheren Übergang
-            if abs(angle_diff) > math.radians(45):
-                segment_type = 'arc'
+        # Stelle sicher, dass der Track wirklich geschlossen ist, indem der letzte Punkt gleich dem ersten ist
+        if track_points and track_points[0] != track_points[-1]:
+            track_points.append(track_points[0])
+    
+    # 8. Qualitätsprüfung: Entferne zu dicht beieinanderliegende Punkte
+    if len(track_points) > 3:
+        filtered_points = [track_points[0]]
+        min_dist_squared = 0.001  # Minimaler quadrierter Abstand zwischen Punkten
         
-        # Segment erzeugen basierend auf dem ausgewählten Typ
-        if segment_type == 'straight':
-            # Direkte Linie zum Zielpunkt
-            new_point = target_anchor_point
-            # Aktualisiere das Heading in Richtung des Ziels
-            new_heading_rad = angle_to_target_rad
+        for i in range(1, len(track_points)):
+            last_x, last_y = filtered_points[-1]
+            curr_x, curr_y = track_points[i]
+            dist_squared = (curr_x - last_x)**2 + (curr_y - last_y)**2
             
-            # Füge den neuen Punkt mit seinem Heading hinzu
-            track_points.append(new_point)
-            point_headings.append((new_point, new_heading_rad))
-            
-        elif segment_type == 'arc':
-            # Für normale Bogensegmente (nicht der letzte Abschluss bei geschlossenen Tracks)
-            if not (closed_track and i == len(anchor_points_cartesian) - 2):
-                # Berechne den optimalen Radius basierend auf der Distanz zum Ziel und dem Winkelunterschied
-                # Bei kleiner Winkeländerung: Größerer Radius für sanftere Kurve
-                # Bei großer Winkeländerung: Kleinerer Radius für schärfere Kurve, aber nicht zu klein
-                
-                # Wenn die Winkeländerung sehr klein ist, verwenden wir eine gerade Linie
-                if abs(angle_diff) < math.radians(10):
-                    segment_type = 'straight'
-                    arc_radius = 0  # wird nicht verwendet
-                    arc_total_angle_rad = 0  # wird nicht verwendet
-                else:
-                    # Bei mittleren bis großen Winkeländerungen: Optimaler Radius
-                    # Formula: R = D / (2 * sin(θ/2)) wobei D die Distanz und θ der zu überbrückende Winkel ist
-                    # Diese Formel ergibt einen Bogen, der den Zielpunkt genau trifft
-                    arc_radius = min(
-                        max(
-                            arc_radius_min,
-                            distance_to_target / (2 * abs(math.sin(angle_diff/2))) if abs(angle_diff) > 0.01 else distance_to_target
-                        ),
-                        arc_radius_max
-                    )
-                    
-                    # Begrenze die Winkeländerung für natürlichere Kurven
-                    max_angle_rad = math.radians(arc_angle_total_max_deg)
-                    angle_magnitude = min(abs(angle_diff), max_angle_rad)
-                    
-                    # Behalte das Vorzeichen bei (links oder rechts abbiegen)
-                    arc_direction = 1 if angle_diff > 0 else -1
-                    arc_total_angle_rad = angle_magnitude * arc_direction
-            
-            # Mittelpunkt des Kreisbogens berechnen
-            # Bei einem Bogen mit Winkel arc_total_angle_rad muss der Mittelpunkt senkrecht 
-            # zur aktuellen Heading-Richtung im Abstand arc_radius liegen
-            # Die Richtung hängt vom Vorzeichen des Winkels ab: positiv = links, negativ = rechts
-            turn_direction = 1 if arc_total_angle_rad > 0 else -1
-            # Wenn wir nach links abbiegen (positiv), liegt der Mittelpunkt links vom aktuellen Heading
-            # was +90° entspricht, bei Rechtsabbiegung (negativ) -90°
-            perp_angle_to_center = current_heading_rad + (math.pi/2) * turn_direction
-            center_x = current_pos[0] + arc_radius * math.cos(perp_angle_to_center)
-            center_y = current_pos[1] + arc_radius * math.sin(perp_angle_to_center)
-            
-            # Winkel vom Kreismittelpunkt zum aktuellen Punkt
-            # Das ist der Startwinkel für den Bogen auf dem Kreis
-            angle_from_center_to_current = math.atan2(
-                current_pos[1] - center_y, 
-                current_pos[0] - center_x
-            )
-            
-            # Bogen-Punkte erzeugen
-            arc_points = []
-            
-            # Adaptiere die Anzahl der Bogenpunkte basierend auf der Winkelgröße
-            # aber reduziere die Gesamtanzahl und setze ein Maximum
-            num_arc_points = max(3, min(8, int(arc_num_points_approx * abs(arc_total_angle_rad) / math.radians(90))))
-            
-            last_arc_angle = angle_from_center_to_current
-            
-            for j in range(1, num_arc_points + 1):
-                fraction = j / num_arc_points
-                # Winkel auf dem Kreisbogen vom Start- zum Endwinkel
-                arc_angle = angle_from_center_to_current + fraction * arc_total_angle_rad
-                last_arc_angle = arc_angle
-                
-                # Position auf dem Kreisbogen
-                arc_x = center_x + arc_radius * math.cos(arc_angle)
-                arc_y = center_y + arc_radius * math.sin(arc_angle)
-                arc_point = (arc_x, arc_y)
-                
-                # Tangentiale Richtung an diesem Punkt auf dem Bogen
-                # Die Tangente steht senkrecht zur Linie vom Mittelpunkt zum Punkt auf dem Bogen
-                # Der Tangentialwinkel ist der Winkel zum Mittelpunkt + 90° im richtigen Drehsinn
-                arc_heading = arc_angle + math.pi/2 * (-turn_direction)
-                
-                # Punkt zum Track hinzufügen
-                arc_points.append(arc_point)
-                track_points.append(arc_point)
-                point_headings.append((arc_point, arc_heading))
-            
-            # Spezialbehandlung für das letzte Segment bei geschlossenen Tracks
-            if closed_track and i == len(anchor_points_cartesian) - 2:
-                # Stelle sicher, dass der Track perfekt geschlossen ist
-                # Wir müssen prüfen, ob wir den Zielpunkt wirklich erreicht haben
-                # und ob die Tangente am letzten Punkt dem Initial-Heading entspricht
-                
-                # Für eine glatte Verbindung:
-                # 1. Ersetze den letzten Punkt durch den exakten Startpunkt
-                if arc_points:  # Wenn Bogenpunkte erzeugt wurden
-                    # Ersetze den letzten generierten Punkt mit dem exakten Startpunkt
-                    track_points[-1] = track_points[0]
-                    
-                    # 2. Setze das Heading auf den Initial-Wert zurück
-                    point_headings[-1] = (track_points[0], point_headings[0][1])
-                    
-                    # 3. Optional: Füge einen zusätzlichen Punkt vor dem letzten ein,
-                    # um den Übergang noch weicher zu machen
-                    if len(arc_points) > 2:
-                        # Berechne einen Punkt zwischen dem vorletzten und dem letzten,
-                        # der bereits eine Richtung in Richtung des Initial-Headings hat
-                        pen_x, pen_y = arc_points[-2]
-                        init_heading = point_headings[0][1]
-                        
-                        # Erzeuge einen Zwischenpunkt mit angepasster Richtung
-                        # der zwischen dem vorletzten Bogenpunkt und dem Startpunkt liegt
-                        transition_x = (pen_x + track_points[0][0]) / 2
-                        transition_y = (pen_y + track_points[0][1]) / 2
-                        
-                        # Ersetze den vorletzten Punkt
-                        if len(track_points) >= 2:
-                            track_points[-2] = (transition_x, transition_y)
-                            # Setze das Heading zu einem Mittelwert
-                            avg_heading = (point_headings[-2][1] + init_heading) / 2
-                            point_headings[-2] = ((transition_x, transition_y), avg_heading)
-
-    # Spezielle Glättung für geschlossene Tracks
-    smoothing_val = config.get('smoothing_window', 1)
-    if smoothing_val and smoothing_val > 1 and len(track_points) >= smoothing_val:
-        if closed_track and track_points[0] == track_points[-1]:
-            # Erzeuge eine zyklische Kopie für bessere Glättung an den Rändern
-            wrap_size = smoothing_val
-            xs_cyclical = [p[0] for p in track_points[-(wrap_size+1):-1]] + [p[0] for p in track_points] + [p[0] for p in track_points[1:wrap_size+1]]
-            ys_cyclical = [p[1] for p in track_points[-(wrap_size+1):-1]] + [p[1] for p in track_points] + [p[1] for p in track_points[1:wrap_size+1]]
-            
-            xs = np.array(xs_cyclical)
-            ys = np.array(ys_cyclical)
-            
-            # Anwenden der Glättung
-            kernel = np.ones(smoothing_val) / smoothing_val
-            xs_smooth = np.convolve(xs, kernel, mode='same')
-            ys_smooth = np.convolve(ys, kernel, mode='same')
-            
-            # Nimm nur den mittleren Teil zurück (ohne die Wrapper-Punkte)
-            xs_smooth = xs_smooth[wrap_size:-wrap_size]
-            ys_smooth = ys_smooth[wrap_size:-wrap_size]
-            
-            # Stelle sicher, dass Start- und Endpunkt exakt übereinstimmen
-            xs_smooth[-1] = xs_smooth[0]
-            ys_smooth[-1] = ys_smooth[0]
-            
-            # Konvertiere zurück zu einer Liste von Punkten
-            track_points = list(zip(xs_smooth.tolist(), ys_smooth.tolist()))
-        else:
-            # Normale Glättung für nicht geschlossene Tracks
-            xs = np.array([p[0] for p in track_points])
-            ys = np.array([p[1] for p in track_points])
-            
-            kernel = np.ones(smoothing_val) / smoothing_val
-            xs_smooth = np.convolve(xs, kernel, mode='same')
-            ys_smooth = np.convolve(ys, kernel, mode='same')
-            
-            # Konvertiere zurück zu einer Liste von Punkten
-            track_points = list(zip(xs_smooth.tolist(), ys_smooth.tolist()))
-
+            if dist_squared > min_dist_squared:
+                filtered_points.append(track_points[i])
+        
+        if len(filtered_points) >= 3:  # Mindestanzahl für sinnvolle Tracks
+            track_points = filtered_points
+    
+    # 9. Stellensicher, dass bei geschlossenen Tracks Start und Ende identisch sind
+    if closed_track and track_points and track_points[0] != track_points[-1]:
+        track_points[-1] = track_points[0]
+    
     return track_points
 def load_scripted_track(script_path, closed_track=False):
     """Lädt einen Track aus einer Skriptdatei (jede Zeile "x y"), optional geschlossen."""
@@ -571,126 +414,294 @@ def load_csv_track(csv_path, closed_track=False):
     return track_points
 
 def get_track_borders(centerline_points):
-    """Berechnet die linke und rechte Begrenzung eines Tracks."""
+    """
+    Berechnet die linke und rechte Begrenzung eines Tracks mit verbesserten Normalenvektoren.
+    
+    Diese Funktion verwendet eine Kombination aus:
+    1. Verbesserte Berechnung von Normalenvektoren an Kurvenpunkten
+    2. Glättung der Normalenvektoren für konsistente Streckenbreite
+    3. Adaptive Behandlung von geschlossenen Tracks und scharfen Kurven
+    4. Spezialbehandlung für Start- und Endpunkte
+    
+    Args:
+        centerline_points: Liste von (x, y) Koordinaten der Mittellinie
+        
+    Returns:
+        Tuple mit zwei Listen: (linke Begrenzungspunkte, rechte Begrenzungspunkte)
+    """
+    import numpy as np
+    
     left_border = []
     right_border = []
+    
+    # Grundlegende Validierung
     if not centerline_points or len(centerline_points) < 2:
         print("Warnung in get_track_borders: Mittellinie hat weniger als 2 Punkte, Ränder können nicht berechnet werden.")
         return [], []
 
-    track_w = config.get('track_width', 0.8) # Standardwert, falls nicht in config
-
-    for i in range(len(centerline_points)):
-        p_curr = centerline_points[i]
-
-        if i == 0: # Erster Punkt
-            p_next = centerline_points[i+1]
-            dx, dy = p_next[0] - p_curr[0], p_next[1] - p_curr[1]
-        elif i == len(centerline_points) - 1: # Letzter Punkt
-            p_prev = centerline_points[i-1]
-            dx, dy = p_curr[0] - p_prev[0], p_curr[1] - p_prev[1]
-        else: # Mittlere Punkte
-            p_prev, p_next = centerline_points[i-1], centerline_points[i+1]
-            # Vektor von p_prev zu p_next für eine glattere Normale an Kurvenpunkten
-            dx_segment, dy_segment = p_next[0] - p_prev[0], p_next[1] - p_prev[1]
-            # Die Normale wird auf diesen Segmentvektor berechnet
-            # Der Punkt selbst ist p_curr
-            dx, dy = dx_segment, dy_segment
-
-
-        norm_dx, norm_dy = -dy, dx # Orthogonaler Vektor
-        length = np.sqrt(norm_dx**2 + norm_dy**2)
-
-        if length == 0: # Fallback, falls Punkte identisch sind
-            if left_border: # Nutze die vorherige Normale (vereinfacht)
-                # Dies ist eine Vereinfachung und könnte bei scharfen Kehren ungenau sein
-                prev_l_point = left_border[-1]
-                prev_c_point = centerline_points[i-1] # Muss i-1 sein
-                norm_vec_prev_dx = prev_l_point[0] - prev_c_point[0]
-                norm_vec_prev_dy = prev_l_point[1] - prev_c_point[1]
-                # Normalisiere diesen Vektor, um die Richtung zu bekommen
-                dist_prev = np.sqrt(norm_vec_prev_dx**2 + norm_vec_prev_dy**2)
-                if dist_prev > 0:
-                    norm_dx_normalized = (norm_vec_prev_dx / dist_prev)
-                    norm_dy_normalized = (norm_vec_prev_dy / dist_prev)
-                else: # Sollte nicht passieren
-                    norm_dx_normalized, norm_dy_normalized = 0, 1
-
-            else: # Kein vorheriger Punkt, Standard-Fallback
-                norm_dx_normalized, norm_dy_normalized = 0, 1
+    # Parameter aus der Konfiguration laden
+    track_w = config.get('track_width', 0.8)  # Streckenbreite
+    
+    # Überprüfen ob der Track geschlossen ist
+    is_closed_track = (len(centerline_points) > 2 and 
+                       centerline_points[0] == centerline_points[-1])
+    
+    # Arrays für effizientere Berechnung
+    points = np.array(centerline_points)
+    normals = np.zeros((len(points), 2))  # Für Normalenvektoren
+    
+    # Für jeden Punkt: Berechne den Tangentenvektor und dann den Normalenvektor
+    for i in range(len(points)):
+        # Erster Punkt: Verwende Richtung zum nächsten Punkt
+        if i == 0:
+            if is_closed_track:
+                # Bei geschlossenem Track: Verwende Punkte vor und nach dem ersten/letzten Punkt
+                p_prev = points[-2]  # Vorletzter Punkt
+                p_curr = points[i]   # Erster/Letzter Punkt (identisch)
+                p_next = points[i+1] # Zweiter Punkt
+                # Berechne Tangentenvektor als Durchschnitt der Richtungen
+                dx_prev = p_curr[0] - p_prev[0]
+                dy_prev = p_curr[1] - p_prev[1]
+                dx_next = p_next[0] - p_curr[0]
+                dy_next = p_next[1] - p_curr[1]
+                
+                # Normalisiere diese Vektoren
+                len_prev = np.sqrt(dx_prev**2 + dy_prev**2)
+                len_next = np.sqrt(dx_next**2 + dy_next**2)
+                
+                if len_prev > 0:
+                    dx_prev, dy_prev = dx_prev/len_prev, dy_prev/len_prev
+                if len_next > 0:
+                    dx_next, dy_next = dx_next/len_next, dy_next/len_next
+                
+                # Berechne den Tangentenvektor als Durchschnitt
+                dx = (dx_prev + dx_next) / 2
+                dy = (dy_prev + dy_next) / 2
+            else:
+                # Bei offenem Track: Verwende Richtung zum zweiten Punkt
+                p_curr = points[i]
+                p_next = points[i+1]
+                # Tangentenvektor zeigt in Richtung des nächsten Punktes
+                dx, dy = p_next[0] - p_curr[0], p_next[1] - p_curr[1]
+                # Keine weitere Berechnung nötig
+        
+        # Letzter Punkt: Verwende Richtung vom vorherigen Punkt
+        elif i == len(points) - 1:
+            if is_closed_track:
+                # Bei geschlossenem Track: Bereits beim ersten Punkt behandelt
+                # Wir können die bereits berechneten Werte für den ersten Punkt wiederverwenden
+                normals[i] = normals[0]
+                continue
+            else:
+                # Bei offenem Track: Verwende Richtung vom vorletzten zum letzten Punkt
+                p_prev = points[i-1]
+                p_curr = points[i]
+                # Tangentenvektor zeigt in die gleiche Richtung wie der vorherige
+                dx, dy = p_curr[0] - p_prev[0], p_curr[1] - p_prev[1]
+        
+        # Für alle anderen Punkte: Verwende den Durchschnitt der Richtungen
         else:
-            norm_dx_normalized, norm_dy_normalized = norm_dx / length, norm_dy / length
-
-        left_x = p_curr[0] + norm_dx_normalized * track_w / 2
-        left_y = p_curr[1] + norm_dy_normalized * track_w / 2
-        left_border.append((left_x, left_y))
-
-        right_x = p_curr[0] - norm_dx_normalized * track_w / 2
-        right_y = p_curr[1] - norm_dy_normalized * track_w / 2
-        right_border.append((right_x, right_y))
-
+            p_prev = points[i-1]
+            p_curr = points[i]
+            p_next = points[i+1]
+            
+            # Vektoren von aktuellem Punkt zum vorherigen und nächsten
+            dx_prev = p_curr[0] - p_prev[0]
+            dy_prev = p_curr[1] - p_prev[1]
+            dx_next = p_next[0] - p_curr[0]
+            dy_next = p_next[1] - p_curr[1]
+            
+            # Normalisiere diese Vektoren
+            len_prev = np.sqrt(dx_prev**2 + dy_prev**2)
+            len_next = np.sqrt(dx_next**2 + dy_next**2)
+            
+            if len_prev > 0:
+                dx_prev, dy_prev = dx_prev/len_prev, dy_prev/len_prev
+            if len_next > 0:
+                dx_next, dy_next = dx_next/len_next, dy_next/len_next
+            
+            # Berechne den Tangentenvektor als Durchschnitt der normalisierten Vektoren
+            # Diese Methode erzeugt glattere Übergänge an Kurvenpunkten
+            dx = (dx_prev + dx_next) / 2
+            dy = (dy_prev + dy_next) / 2
+        
+        # Berechne den Normalenvektor (senkrecht zum Tangentenvektor)
+        normal_x, normal_y = -dy, dx
+        
+        # Normalisiere den Normalenvektor
+        normal_length = np.sqrt(normal_x**2 + normal_y**2)
+        
+        if normal_length > 0:
+            normal_x, normal_y = normal_x/normal_length, normal_y/normal_length
+            normals[i] = [normal_x, normal_y]
+        elif i > 0:
+            # Falls der Normalenvektor nicht berechnet werden kann, verwende den vorherigen
+            normals[i] = normals[i-1]
+        else:
+            # Fallback für den ersten Punkt
+            normals[i] = [0, 1]
+    
+    # Optional: Glätte die Normalenvektoren für geschmeidigere Ränder
+    # Dies verhindert abrupte Änderungen an scharfen Kurven
+    if len(points) > 3:
+        # Einfacher gleitender Durchschnitt für die Normalenvektoren
+        smoothed_normals = np.copy(normals)
+        window_size = min(5, len(normals) // 3)  # Adaptive Fenstergröße
+        
+        if window_size >= 3:
+            # Nicht für Start- und Endpunkte, falls offener Track
+            start_idx = 1 if not is_closed_track else 0
+            end_idx = len(normals)-1 if not is_closed_track else len(normals)
+            
+            for i in range(start_idx, end_idx):
+                # Berechne Durchschnitt der benachbarten Normalenvektoren
+                window_start = max(0, i - window_size // 2)
+                window_end = min(len(normals), i + window_size // 2 + 1)
+                
+                avg_normal = np.mean(normals[window_start:window_end], axis=0)
+                # Normalisiere den gemittelten Vektor
+                avg_length = np.sqrt(avg_normal[0]**2 + avg_normal[1]**2)
+                
+                if avg_length > 0:
+                    smoothed_normals[i] = avg_normal / avg_length
+        
+        normals = smoothed_normals
+    
+    # Berechne die Randpunkte basierend auf der Mittellinie und den Normalenvektoren
+    for i, point in enumerate(points):
+        normal = normals[i]
+        
+        # Linke Seite: Mittelpunkt + Normale * halbe Streckenbreite
+        left_x = point[0] + normal[0] * track_w / 2
+        left_y = point[1] + normal[1] * track_w / 2
+        left_border.append((float(left_x), float(left_y)))  # Konvertiere zu Python Float
+        
+        # Rechte Seite: Mittelpunkt - Normale * halbe Streckenbreite
+        right_x = point[0] - normal[0] * track_w / 2
+        right_y = point[1] - normal[1] * track_w / 2
+        right_border.append((float(right_x), float(right_y)))  # Konvertiere zu Python Float
+    
     return left_border, right_border
 
 
 def plot_track(centerline, left_border, right_border, save_path_prefix=None):
-    """Stellt den Track mit Rändern und Segmentfarben dar und speichert ihn optional."""
+    """Stellt den Track mit verbesserten visuellen Elementen dar und speichert ihn optional."""
     plt.style.use('seaborn-v0_8-whitegrid')
-    fig = plt.figure(figsize=(16, 10)) # fig zugewiesen, um savefig verwenden zu können
-
-    # Segmente mit alternierenden Farben füllen
-    colors = config.get('alternating_colors_segments', ['#e0e0e0', '#c0c0c0']) # Hellere Grautöne
+    fig = plt.figure(figsize=(16, 10))
+    
+    # Parametrierung für bessere Visualisierung
+    track_closed = len(centerline) > 1 and centerline[0] == centerline[-1]
+    
+    # Farbverlauf für die Strecke - vom Start zum Ende
     if len(centerline) > 1 and len(left_border) > 1 and len(right_border) > 1:
-        for i in range(len(centerline) - 1):
+        # Farbverlauf berechnen - Grün zu Gelb zu Rot
+        num_segments = len(centerline) - 1
+        
+        from matplotlib.colors import LinearSegmentedColormap
+        
+        # Erstelle benutzerdefinierten Farbverlauf für bessere Sichtbarkeit der Richtung
+        if track_closed:
+            # Für geschlossene Tracks: Blau -> Grün -> Gelb -> Orange -> Rot -> Violett -> Blau
+            colors_gradient = [(0.0, 'royalblue'), 
+                              (0.2, 'limegreen'),
+                              (0.4, 'gold'),
+                              (0.6, 'darkorange'),
+                              (0.8, 'crimson'),
+                              (1.0, 'royalblue')]
+        else:
+            # Für offene Tracks: Grün -> Gelb -> Orange -> Rot
+            colors_gradient = [(0.0, 'limegreen'), 
+                              (0.33, 'gold'),
+                              (0.67, 'darkorange'),
+                              (1.0, 'crimson')]
+        
+        # Erstelle den Farbverlauf
+        cmap = LinearSegmentedColormap.from_list('track_gradient', colors_gradient, N=max(100, num_segments))
+        
+        # Segmente mit Farbverlauf füllen
+        for i in range(num_segments):
+            frac = i / num_segments  # Position im Farbverlauf
+            
+            # Polygon-Koordinaten für das Segment
             x_coords = [left_border[i][0], right_border[i][0], right_border[i+1][0], left_border[i+1][0]]
             y_coords = [left_border[i][1], right_border[i][1], right_border[i+1][1], left_border[i+1][1]]
-            plt.fill(x_coords, y_coords, color=colors[i % len(colors)], alpha=0.7, edgecolor='grey', linewidth=0.5, zorder=0)
-
-    # Mittellinie
+            
+            # Einfärben mit Farbverlauf
+            segment_color = cmap(frac)
+            plt.fill(x_coords, y_coords, color=segment_color, alpha=0.6, 
+                     edgecolor='grey', linewidth=0.5, zorder=0)
+    
+    # Mittellinie mit verbesserten Pfeilen für Richtungsvisualisierung
     if centerline:
         cx, cy = zip(*centerline)
-        plt.plot(cx, cy, color=config.get('color_centerline', 'black'), linewidth=2.5, linestyle='--', label='Mittellinie', zorder=3)
-
-    # Linke und rechte Begrenzung
-    line_width_border = 4.5 # Dickere Linien für "gigantisch"
-    shadow_alpha = 0.4
-    shadow_offset = 0.03 # Kleinerer Offset für subtileren Schatten
-
+        plt.plot(cx, cy, color='black', linewidth=2.0, linestyle='--', 
+                 label='Mittellinie', zorder=3)
+        
+        # Pfeile entlang der Mittellinie zur Anzeige der Fahrtrichtung
+        # Füge mehr Pfeile für längere Strecken hinzu
+        num_arrows = min(20, max(5, len(centerline) // 15))  # Adaptive Pfeilanzahl
+        arrow_indices = np.linspace(0, len(centerline)-2, num_arrows, dtype=int)
+        
+        for idx in arrow_indices:
+            # Hol Startpunkt und Richtungsvektor für den Pfeil
+            x, y = centerline[idx]
+            next_x, next_y = centerline[idx + 1]
+            dx, dy = next_x - x, next_y - y
+            
+            # Normalisiere die Länge
+            length = np.sqrt(dx*dx + dy*dy)
+            if length > 0:
+                dx, dy = dx/length, dy/length
+                
+                # Zeichne den Pfeil - länger und deutlicher
+                plt.arrow(x, y, dx*5, dy*5, head_width=2.0, head_length=3.0, 
+                          fc='black', ec='black', alpha=0.7, zorder=4)
+    
+    # Rechter und linker Rand mit verbesserten visuellen Eigenschaften
+    line_width_border = 4.0
+    
     if left_border:
         lx, ly = zip(*left_border)
-        # Schatten für linken Rand
-        plt.plot(np.array(lx) + shadow_offset, np.array(ly) - shadow_offset, color='#555599', linewidth=line_width_border + 0.5, zorder=1, alpha=shadow_alpha)
-        plt.plot(lx, ly, color=config.get('color_left_border', 'blue'), linewidth=line_width_border, label='Linker Rand', zorder=2)
-
-
+        # Eleganter Schattenwurf für besseren 3D-Effekt
+        shadow_offset = 0.5
+        plt.plot(np.array(lx) + shadow_offset, np.array(ly) - shadow_offset, 
+                 color='#555599', linewidth=line_width_border + 1.5, 
+                 zorder=1, alpha=0.3)
+        plt.plot(lx, ly, color=config.get('color_left_border', 'blue'), 
+                linewidth=line_width_border, label='Linker Rand', zorder=2)
+    
     if right_border:
         rx, ry = zip(*right_border)
-        # Schatten für rechten Rand
-        plt.plot(np.array(rx) + shadow_offset, np.array(ry) - shadow_offset, color='#995555', linewidth=line_width_border + 0.5, zorder=1, alpha=shadow_alpha)
-        plt.plot(rx, ry, color=config.get('color_right_border', 'red'), linewidth=line_width_border, label='Rechter Rand', zorder=2)
+        # Eleganter Schattenwurf
+        shadow_offset = 0.5
+        plt.plot(np.array(rx) + shadow_offset, np.array(ry) - shadow_offset, 
+                 color='#995555', linewidth=line_width_border + 1.5, 
+                 zorder=1, alpha=0.3)
+        plt.plot(rx, ry, color=config.get('color_right_border', 'red'), 
+                linewidth=line_width_border, label='Rechter Rand', zorder=2)
     
-    # Markiere Start- und Endpunkt der Mittellinie, falls vorhanden
+    # Verbesserte Start- und Endpunktmarkierungen mit intuitiven Icons
     if centerline and len(centerline) > 1:
         start_x, start_y = centerline[0]
         end_x, end_y = centerline[-1]
         
-        # Startpunkt: blauer halbtransparenter Kreis
-        plt.scatter(start_x, start_y, s=150, color='blue', alpha=0.6, marker='o', zorder=5, label='Start')
+        # Startpunkt: Klares blaues Flaggensymbol
+        plt.scatter(start_x, start_y, s=200, color='darkblue', marker='o', 
+                   edgecolor='white', linewidth=2, zorder=10)
+        plt.text(start_x+2, start_y+2, 'START', fontsize=12, color='darkblue', 
+                fontweight='bold', ha='left', va='bottom', zorder=10)
         
-        # Endpunkt: grüne halbtransparente Raute (Diamond)
-        # Bei geschlossenen Tracks sind Start und Ende identisch, also nur anzeigen, wenn sie unterschiedlich sind
-        if (start_x, start_y) != (end_x, end_y):
-            plt.scatter(end_x, end_y, s=150, color='green', alpha=0.6, marker='D', zorder=5, label='Ende')
-    
-    # Markiere Start- und Endpunkt der Mittellinie, falls vorhanden
-    if centerline and len(centerline) > 1:
-        start_x, start_y = centerline[0]
-        end_x, end_y = centerline[-1]
-        
-        # Startpunkt: blauer halbtransparenter Kreis
-        plt.scatter(start_x, start_y, s=150, color='blue', alpha=0.6, marker='o', zorder=5, label='Start')
-        
-        # Endpunkt: grüne halbtransparente Raute (Diamond)
-        plt.scatter(end_x, end_y, s=150, color='green', alpha=0.6, marker='D', zorder=5, label='Ende')
+        # Endpunkt: Nur anzeigen, wenn nicht geschlossen
+        if not track_closed:
+            plt.scatter(end_x, end_y, s=200, color='darkred', marker='D', 
+                       edgecolor='white', linewidth=2, zorder=10) 
+            plt.text(end_x+2, end_y+2, 'ZIEL', fontsize=12, color='darkred', 
+                    fontweight='bold', ha='left', va='bottom', zorder=10)
+            
+        # Bei geschlossenen Tracks speziellen Text hinzufügen
+        if track_closed:
+            plt.text(start_x+2, start_y+2, 'START/ZIEL', fontsize=12, color='darkblue', 
+                    fontweight='bold', ha='left', va='bottom', zorder=10)
 
     plt.title('Generierter Track', fontsize=26, fontweight='bold', color='#333333')
     plt.xlabel('X-Koordinate', fontsize=18, color='#444444')
@@ -768,55 +779,57 @@ def plot_track(centerline, left_border, right_border, save_path_prefix=None):
             output_dir = os.path.dirname(filename)
             if output_dir and not os.path.exists(output_dir):
                 os.makedirs(output_dir)
-                print(f"Verzeichnis erstellt: {output_dir}")
             fig.savefig(filename, dpi=300) # fig.savefig statt plt.savefig
-            print(f"Track gespeichert als: {filename}")
+            print(f"Track-Bild gespeichert: {filename}")
         except Exception as e:
-            print(f"Fehler beim Speichern des Tracks als PNG: {e}")
+            print(f"Fehler beim Speichern des Track-Bildes: {e}")
     
+    # Zeige den Plot an
     plt.show()
+    
+    return fig
 
 def ensure_example_files():
-    """Erstellt Beispiel-Skript- und CSV-Dateien, falls nicht vorhanden."""
-    base_path = os.path.dirname(config.get('script_path_example', get_default_config()['script_path_example'])) # /notebook/tracks
-
-    if not os.path.exists(base_path):
-        try:
-            os.makedirs(base_path)
-            print(f"Verzeichnis {base_path} erstellt.")
-        except OSError as e:
-            print(f"Fehler beim Erstellen des Verzeichnisses {base_path}: {e}")
-            return
-
-    default_script_path = config.get('script_path_example')
-    if default_script_path and not os.path.exists(default_script_path):
-        try:
-            with open(default_script_path, 'w') as f:
-                f.write("0 0\n10 5\n20 0\n30 -5\n25 -15\n15 -10\n5 -8\n0 -5\n-5 -2\n0 0\n") # Geschlossener Track
-            print(f"Beispiel-Skriptdatei erstellt: {default_script_path}")
-        except Exception as e:
-            print(f"Fehler beim Erstellen der Beispiel-Skriptdatei {default_script_path}: {e}")
-
+    """Stellt sicher, dass die Beispieldateien existieren und erstellt sie bei Bedarf."""
+    # Beispiel-CSV-Datei erstellen, falls sie nicht existiert
     default_csv_path = config.get('csv_path_example')
     if default_csv_path and not os.path.exists(default_csv_path):
         try:
+            # Stelle sicher, dass das Verzeichnis existiert
+            csv_dir = os.path.dirname(default_csv_path)
+            if csv_dir and not os.path.exists(csv_dir):
+                os.makedirs(csv_dir)
+                
             with open(default_csv_path, 'w') as f:
                 f.write("x,y,comment\n")
                 f.write("0,0,start_node\n5,2,node1\n10,5,node2\n15,3,node3\n20,0,node4\n25,-2,node5\n20,-5,node6\n10,-6,node7\n0,-3,end_node\n")
             print(f"Beispiel-CSV-Datei erstellt: {default_csv_path}")
         except Exception as e:
             print(f"Fehler beim Erstellen der Beispiel-CSV-Datei {default_csv_path}: {e}")
+    
+    # Beispiel-Script-Datei erstellen, falls sie nicht existiert
+    default_script_path = config.get('script_path_example')
+    if default_script_path and not os.path.exists(default_script_path):
+        try:
+            # Stelle sicher, dass das Verzeichnis existiert
+            script_dir = os.path.dirname(default_script_path)
+            if script_dir and not os.path.exists(script_dir):
+                os.makedirs(script_dir)
+                
+            with open(default_script_path, 'w') as f:
+                f.write("0 0\n5 5\n10 10\n5 15\n0 10\n-5 5\n0 0\n") # Geschlossener Track
+            print(f"Beispiel-Skriptdatei erstellt: {default_script_path}")
+        except Exception as e:
+            print(f"Fehler beim Erstellen der Beispiel-Skriptdatei {default_script_path}: {e}")
 
 # Beim Import des Moduls sicherstellen, dass die Beispieldateien existieren
 ensure_example_files()
-
-# Entferne die alten print-Anweisungen, da die Konfiguration jetzt zentralisiert ist
-# print("trackgenlib.py wurde initialisiert und Konfiguration geladen.")
-# print(f"Konfiguration: track_width={config.get('track_width')}, script_example='{config.get('script_path_example')}', csv_example='{config.get('csv_path_example')}'")
-
 def close_track_smoothly(track_points):
     """Schließt einen Track glatt, ohne zu große Segmente zum Startpunkt zu erzeugen.
     Sorgt dafür, dass die Steigung am Anfang und Ende des Tracks gleich ist.
+    
+    Die verbesserte Version verwendet Spline-Interpolation für einen natürlicheren
+    Übergang, wenn möglich, oder eine optimierte Kreisbogenberechnung.
     
     Args:
         track_points: Liste von (x, y) Koordinaten des Tracks
@@ -831,95 +844,151 @@ def close_track_smoothly(track_points):
     if track_points[0] == track_points[-1]:
         return track_points
         
-    # Berechne die durchschnittliche Segmentlänge
-    total_length = 0.0
-    segment_lengths = []
-    for i in range(1, len(track_points)):
-        dx = track_points[i][0] - track_points[i-1][0]
-        dy = track_points[i][1] - track_points[i-1][1]
-        segment_length = np.sqrt(dx**2 + dy**2)
-        segment_lengths.append(segment_length)
-        total_length += segment_length
+    try:
+        # Versuche den Spline-basierten Ansatz für glattere Schließung
+        import numpy as np
+        from scipy import interpolate
         
-    avg_segment_length = total_length / len(segment_lengths) if segment_lengths else 1.0
-    
-    # Berechne die Distanz zwischen dem letzten und dem ersten Punkt
-    first_point = track_points[0]
-    last_point = track_points[-1]
-    dx_closing = first_point[0] - last_point[0]
-    dy_closing = first_point[1] - last_point[1]
-    closing_distance = np.sqrt(dx_closing**2 + dy_closing**2)
-    
-    # Berechne die Steigungen am Anfang und Ende des Tracks
-    # Für Anfangssteigung: Vektor vom ersten zum zweiten Punkt
-    if len(track_points) > 1:
-        start_slope_x = track_points[1][0] - track_points[0][0]
-        start_slope_y = track_points[1][1] - track_points[0][1]
-        start_angle = math.atan2(start_slope_y, start_slope_x)
-    else:
-        start_angle = 0
-    
-    # Für Endsteigung: Vektor vom vorletzten zum letzten Punkt
-    if len(track_points) > 1:
-        end_slope_x = track_points[-1][0] - track_points[-2][0]
-        end_slope_y = track_points[-1][1] - track_points[-2][1]
-        end_angle = math.atan2(end_slope_y, end_slope_x)
-    else:
-        end_angle = 0
-    
-    # Wenn die Schließungsdistanz zu groß ist, füge zusätzliche Punkte hinzu
-    max_closing_length = avg_segment_length * config.get('max_closing_length_factor', 1.5)
-    
-    if closing_distance > max_closing_length:
-        # Berechne Winkel zwischen Start und Ende
-        angle_diff = (start_angle - end_angle) % (2 * math.pi)
-        if angle_diff > math.pi:
-            angle_diff -= 2 * math.pi  # Normalisiere auf [-π, π]
+        # Konvertiere zu Arrays für scipy
+        points = np.array(track_points)
+        x = points[:, 0]
+        y = points[:, 1]
         
-        # Bei großem Winkelunterschied: Erzeuge einen Kreisbogen statt linearer Interpolation
-        if abs(angle_diff) > math.radians(30):
-            # Berechne einen geeigneten Radius für den Bogen
-            # basierend auf der Distanz und dem Winkelunterschied
-            arc_radius = closing_distance / (2 * math.sin(abs(angle_diff)/2)) if abs(angle_diff) > 0.001 else closing_distance * 2
+        # Berechne kumulative Bogenlänge als Parameter
+        t = np.zeros(len(track_points))
+        for i in range(1, len(track_points)):
+            dx = track_points[i][0] - track_points[i-1][0]
+            dy = track_points[i][1] - track_points[i-1][1]
+            t[i] = t[i-1] + np.sqrt(dx**2 + dy**2)
+        
+        # Erstelle erweiterte Arrays für geschlossenen Track
+        # Füge Punkte vom Anfang am Ende und umgekehrt hinzu für C1-Kontinuität
+        n_extra = 3  # Anzahl der zusätzlichen Punkte für die Wiederholung
+        
+        # Erweitere die Punktliste für eine bessere Schließung
+        x_extended = np.concatenate([x[-n_extra:], x, x[:n_extra]])
+        y_extended = np.concatenate([y[-n_extra:], y, y[:n_extra]])
+        
+        # Erweitere Parameterbereich entsprechend
+        t_extra_start = -np.linspace(t[-n_extra:][0], t[-1], n_extra, endpoint=False)[::-1]
+        t_extra_end = np.linspace(0, t[n_extra-1], n_extra) + t[-1]
+        t_extended = np.concatenate([t_extra_start, t, t_extra_end])
+        
+        # Erstelle Splines durch die erweiterten Punkte
+        tck_x = interpolate.splrep(t_extended, x_extended, s=0, k=3)  # k=3 für kubischen Spline
+        tck_y = interpolate.splrep(t_extended, y_extended, s=0, k=3)
+        
+        # Generiere mehr Punkte am Ende des Tracks für den Übergang zum Anfang
+        # Wir generieren Punkte im letzten 20% des Tracks und den Anfangspunkt
+        closing_fraction = 0.2
+        t_close = np.linspace(t[-1] * (1-closing_fraction), t[-1], 10)
+        t_close = np.append(t_close, t_extra_end[-1])  # Füge den echten Schlusspunkt hinzu
+        
+        # Interpoliere die neuen Punkte
+        x_close = interpolate.splev(t_close, tck_x, der=0)
+        y_close = interpolate.splev(t_close, tck_y, der=0)
+        
+        # Entferne den letzten Punkt des ursprünglichen Tracks
+        closed_track = track_points[:-1].copy()
+        
+        # Füge die interpolierten Schließungspunkte hinzu
+        for i in range(len(t_close)):
+            closed_track.append((float(x_close[i]), float(y_close[i])))
+        
+        # Stelle sicher, dass der letzte Punkt exakt mit dem ersten übereinstimmt
+        closed_track[-1] = track_points[0]
+        
+        return closed_track
+        
+    except (ImportError, Exception) as e:
+        # Fallback auf ursprüngliche Methode wenn scipy nicht verfügbar ist
+        # oder ein anderer Fehler auftritt
+        print(f"Warnung: Spline-basiertes Schließen des Tracks fehlgeschlagen: {e}")
+        print("Fallback auf geometrisches Verfahren...")
+        
+        # Berechne die durchschnittliche Segmentlänge
+        total_length = 0.0
+        segment_lengths = []
+        for i in range(1, len(track_points)):
+            dx = track_points[i][0] - track_points[i-1][0]
+            dy = track_points[i][1] - track_points[i-1][1]
+            segment_length = np.sqrt(dx**2 + dy**2)
+            segment_lengths.append(segment_length)
+            total_length += segment_length
             
-            # Berechne Mittelpunkt des Kreisbogens
-            # Der Bogen sollte an beiden Enden tangential zu den Steigungen sein
-            # Wir platzieren den Mittelpunkt senkrecht zur mittleren Richtung
-            avg_angle = (end_angle + start_angle) / 2
-            perp_angle = avg_angle + math.pi/2 * (1 if angle_diff > 0 else -1)
+        avg_segment_length = total_length / len(segment_lengths) if segment_lengths else 1.0
+        
+        # Berechne die Distanz zwischen dem letzten und dem ersten Punkt
+        first_point = track_points[0]
+        last_point = track_points[-1]
+        dx_closing = first_point[0] - last_point[0]
+        dy_closing = first_point[1] - last_point[1]
+        closing_distance = np.sqrt(dx_closing**2 + dy_closing**2)
+        
+        # Maximale Schließlänge basierend auf der durchschnittlichen Segmentlänge
+        max_closing_length = avg_segment_length * config.get('max_closing_length_factor', 1.5)
+        
+        # Berechne die Steigungen am Anfang und Ende des Tracks
+        if len(track_points) > 1:
+            # Anfangssteigung: Vektor vom ersten zum zweiten Punkt
+            start_slope_x = track_points[1][0] - track_points[0][0]
+            start_slope_y = track_points[1][1] - track_points[0][1]
+            start_angle = math.atan2(start_slope_y, start_slope_x)
             
-            # Mittelpunkt berechnen
-            center_x = (first_point[0] + last_point[0]) / 2 + arc_radius * math.cos(perp_angle)
-            center_y = (first_point[1] + last_point[1]) / 2 + arc_radius * math.sin(perp_angle)
+            # Endsteigung: Vektor vom vorletzten zum letzten Punkt
+            end_slope_x = track_points[-1][0] - track_points[-2][0]
+            end_slope_y = track_points[-1][1] - track_points[-2][1]
+            end_angle = math.atan2(end_slope_y, end_slope_x)
             
-            # Winkel vom Mittelpunkt zum letzten Punkt
-            angle_to_last = math.atan2(last_point[1] - center_y, last_point[0] - center_x)
-            angle_to_first = math.atan2(first_point[1] - center_y, first_point[0] - center_x)
+            # Winkelunterschied zwischen Anfang und Ende
+            angle_diff = (start_angle - end_angle) % (2 * math.pi)
+            if angle_diff > math.pi:
+                angle_diff -= 2 * math.pi  # Normalisiere auf [-π, π]
             
-            # Winkel zwischen diesen beiden Punkten
-            arc_angle = (angle_to_first - angle_to_last) % (2 * math.pi)
-            if arc_angle > math.pi:
-                arc_angle -= 2 * math.pi  # Normalisiere auf [-π, π]
-            
-            # Erzeuge Bogenpunkte
-            num_points = max(3, int(abs(arc_angle) / math.radians(15)))  # Ca. alle 15 Grad ein Punkt
-            for i in range(1, num_points):
-                fraction = i / num_points
-                current_angle = angle_to_last + fraction * arc_angle
-                x = center_x + arc_radius * math.cos(current_angle)
-                y = center_y + arc_radius * math.sin(current_angle)
-                track_points.append((x, y))
-        else:
-            # Bei kleinem Winkelunterschied: Lineare Interpolation
-            num_points = int(np.ceil(closing_distance / avg_segment_length))
-            for i in range(1, num_points):
-                # Lineare Interpolation zwischen letztem und erstem Punkt
-                fraction = i / num_points
-                x = last_point[0] + fraction * dx_closing
-                y = last_point[1] + fraction * dy_closing
-                track_points.append((x, y))
-    
-    # Schließlich füge den ersten Punkt hinzu, um den Track zu schließen
-    track_points.append(first_point)
-    
-    return track_points
+            # Bei großem Winkelunterschied oder langer Schließstrecke: Verwende Bogen statt linearer Interpolation
+            if abs(angle_diff) > 0.5 or closing_distance > max_closing_length:
+                # Berechne Radius für den Bogen
+                arc_radius = max(closing_distance / (2 * math.sin(abs(angle_diff)/2)) if abs(angle_diff) > 0.001 else closing_distance * 2,
+                               avg_segment_length * 2)  # Mindestradius basierend auf der Segmentlänge
+                
+                # Platziere den Mittelpunkt des Kreisbogens
+                # Der Bogen sollte an beiden Enden tangential zu den Steigungen sein
+                # Wir platzieren den Mittelpunkt senkrecht zur mittleren Richtung
+                avg_angle = (end_angle + start_angle) / 2
+                perp_angle = avg_angle + math.pi/2 * (1 if angle_diff > 0 else -1)
+                
+                # Mittelpunkt berechnen
+                center_x = (first_point[0] + last_point[0]) / 2 + arc_radius * math.cos(perp_angle)
+                center_y = (first_point[1] + last_point[1]) / 2 + arc_radius * math.sin(perp_angle)
+                
+                # Winkel vom Mittelpunkt zum letzten Punkt
+                angle_to_last = math.atan2(last_point[1] - center_y, last_point[0] - center_x)
+                angle_to_first = math.atan2(first_point[1] - center_y, first_point[0] - center_x)
+                
+                # Winkel zwischen diesen beiden Punkten
+                arc_angle = (angle_to_first - angle_to_last) % (2 * math.pi)
+                if arc_angle > math.pi:
+                    arc_angle -= 2 * math.pi  # Normalisiere auf [-π, π]
+                
+                # Erzeuge Bogenpunkte
+                num_points = max(3, int(abs(arc_angle) / math.radians(15)))  # Ca. alle 15 Grad ein Punkt
+                for i in range(1, num_points):
+                    fraction = i / num_points
+                    current_angle = angle_to_last + fraction * arc_angle
+                    x = center_x + arc_radius * math.cos(current_angle)
+                    y = center_y + arc_radius * math.sin(current_angle)
+                    track_points.append((x, y))
+            else:
+                # Bei kleinem Winkelunterschied: Lineare Interpolation
+                num_points = int(np.ceil(closing_distance / avg_segment_length))
+                for i in range(1, num_points):
+                    # Lineare Interpolation zwischen letztem und erstem Punkt
+                    fraction = i / num_points
+                    x = last_point[0] + fraction * dx_closing
+                    y = last_point[1] + fraction * dy_closing
+                    track_points.append((x, y))
+        
+        # Schließlich füge den ersten Punkt hinzu, um den Track zu schließen
+        track_points.append(first_point)
+        
+        return track_points

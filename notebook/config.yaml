@@ -55,7 +55,7 @@ polar_distances_fixed: [10, 10, 10, 10, 10, 10, 10, 10]   # Feste Abstände (Ein
 # -----------------------------------------------------------------------------
 # Mode 4: Zufälliger Polar-Track
 # -----------------------------------------------------------------------------
-num_points_polar_random: 15     # Anzahl der Punkte (und damit Segmente) für den zufälligen Polar-Track; reduziert für weniger Überschneidungen
+num_points_polar_random: 10     # Anzahl der Ankerpunkte für den zufälligen Polar-Track; weniger Punkte für flüssigere Kurven
 # Winkelbereich (Grad) und Abstandsbereich (Einheiten) für die zufällige polare Generierung.
 polar_angle_range_random: [0, 360]    # Minimaler und maximaler Winkel (Grad)
 polar_distance_range_random: [80.0, 120.0] # Minimaler und maximaler Abstand zum Ursprung (Einheiten)
@@ -65,4 +65,4 @@ curve_types_polar_random: ['straight', 'arc']  # Mögliche Segmenttypen: 'straig
 polar_arc_radius_min: 15.0           # Minimaler Radius für Bogensegmente (Einheiten) - erhöht für weichere Kurven
 polar_arc_radius_max: 60.0           # Maximaler Radius für Bogensegmente (Einheiten) - reduziert, um zu große Bögen zu vermeiden
 polar_arc_max_angle_deg: 90.0        # Maximaler *Betrag* des Bogenwinkels in Grad - reduziert für weichere Kurven
-polar_arc_num_points: 6              # Anzahl der Interpolationspunkte zur Approximation eines Bogens - reduziert für weniger Punkte
+polar_arc_num_points: 6              # Anzahl der Interpolationspunkte pro Bogen

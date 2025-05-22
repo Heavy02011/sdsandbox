@@ -116,31 +116,105 @@ def main():
         import numpy as np
         import math
         
-        # Anstatt zufällige Winkel zu verwenden, teile den Vollkreis (360 Grad) gleichmäßig auf
-        # Dies verhindert, dass Ankerpunkte zu dicht beieinander liegen
-        # Füge dann eine kleine Zufallskomponente hinzu, um nicht perfekt regelmäßig zu sein
+        # Verbesserte Ankerpunkterzeugung für interessantere Strecken
+        # Wir verwenden eine Kombination aus regelmäßiger Anordnung und zufälligen Distanzen
+        
+        # 1. Erzeuge Winkel mit kontrollierter Verteilung
         angle_step = 360.0 / num_points
         angles_random = []
         for i in range(num_points):
             base_angle = i * angle_step
-            # Zufällige Variation um bis zu ±15% des Schrittwinkels
-            jitter = random.uniform(-0.15 * angle_step, 0.15 * angle_step)
+            # Variable Jitter-Größe für mehr Abwechslung
+            # Jitter ist größer bei späteren Punkten, um mehr Variation zu erzielen
+            jitter_percent = 0.1 + (i / num_points * 0.2)  # 10-30% Jitter
+            jitter = random.uniform(-jitter_percent * angle_step, jitter_percent * angle_step)
             angles_random.append((base_angle + jitter) % 360)
         
-        # Sortieren, um sicherzustellen, dass die Punkte in Reihenfolge sind
+        # Sortieren für konsistente Reihenfolge
         angles_random.sort()
         
-        # Die Distanzen können etwas variieren, aber nicht zu stark
-        # Wir verwenden eine einfache Schwingung, um eine interessante Form zu erhalten
+        # 2. Erzeuge interessantere Distanzmuster mit verbesserten Geometrien
+        # Wähle ein zufälliges Muster: Ellipse, Stern, Welle oder Dreiecksform
+        # 'complex' kombiniert mehrere Muster für anspruchsvollere Strecken
+        pattern_type = random.choice(['ellipse', 'star', 'wave', 'triangle', 'complex'])
+        print(f"Erzeuge Track mit Muster-Typ: {pattern_type}")
+        
         base_distance = (dist_min + dist_max) / 2.0
-        amplitude = (dist_max - dist_min) / 2.0 * 0.8  # 80% der Hälfte des Bereichs
+        amplitude = (dist_max - dist_min) / 2.0 * 0.8  # 80% des halben Bereichs für kontrollierte Variation
+        
         distances_random = []
-        for i in range(num_points):
-            # Sanfte Schwingung mit zusätzlicher kleiner Zufallskomponente
-            dist = base_distance + amplitude * math.sin(i * 3.0 * math.pi / num_points)
-            # Füge etwas Zufall hinzu (±10% der Amplitude)
-            dist += random.uniform(-0.1 * amplitude, 0.1 * amplitude)
-            # Stelle sicher, dass die Distanz im erlaubten Bereich bleibt
+        
+        # Parameter für komplexere Muster
+        eccentricity = random.uniform(0.35, 0.65)  # Parameter für Ellipsen
+        rotation = random.uniform(0, 2 * math.pi)  # Zufällige Drehung für alle Muster
+        n_star_points = random.randint(3, 6)  # Anzahl der Spitzen für den Stern
+        phases = [random.uniform(0, 2*math.pi) for _ in range(3)]  # Phasenverschiebungen für Wellen
+        
+        for i, angle in enumerate(angles_random):
+            angle_rad = math.radians(angle)
+            rotated_angle = angle_rad + rotation  # Angewendete Rotation für alle Muster
+            dist = base_distance  # Standarddistanz
+            
+            if pattern_type == 'ellipse':
+                # Verbesserte Ellipse mit kontrollierten Parametern
+                # Ellipsengleichung: r = a(1-e²)/(1-e*cos(θ)) wobei e = Exzentrizität
+                dist = base_distance * (1 - eccentricity**2) / (1 - eccentricity * math.cos(rotated_angle))
+                # Begrenzen, um sicherzustellen, dass wir im gewünschten Bereich bleiben
+                dist = min(dist, dist_min + amplitude * 1.8)  # Vermeide zu große Ausschläge
+                
+            elif pattern_type == 'star':
+                # Verbessertes Sternmuster mit variabler Spitzenzahl
+                # Für n Spitzen verwenden wir eine Sinusfunktion mit n/2 Perioden
+                # Die Multiplikation mit n_star_points erzeugt die Anzahl von "Zacken"
+                star_factor = abs(math.cos(n_star_points * rotated_angle / 2))
+                # Verwende Potenz für schärfere Spitzen
+                star_factor = star_factor ** 0.5  # Quadratwurzel für weniger extreme Spitzen
+                dist = base_distance - amplitude * (1 - star_factor)
+                
+            elif pattern_type == 'wave':
+                # Multi-Frequenz-Welle mit Phasenverschiebungen für organischere Formen
+                freq1 = random.uniform(2, 4)  # Niedrigere Frequenz
+                freq2 = random.uniform(4, 7)  # Mittlere Frequenz
+                freq3 = random.uniform(8, 12) # Höhere Frequenz
+                
+                # Komponenten mit unterschiedlichen Gewichtungen und Phasen
+                wave1 = math.sin(rotated_angle * freq1 + phases[0]) * 0.6
+                wave2 = math.sin(rotated_angle * freq2 + phases[1]) * 0.3
+                wave3 = math.sin(rotated_angle * freq3 + phases[2]) * 0.1
+                
+                combined_wave = wave1 + wave2 + wave3
+                dist = base_distance + amplitude * combined_wave
+                
+            elif pattern_type == 'triangle':
+                # Dreieckige oder polygonale Form
+                # Wir verwenden eine Funktion, die bei bestimmten Winkeln Maxima hat
+                n_sides = random.randint(3, 6)  # Anzahl der Seiten des Polygons
+                polygon_factor = abs(math.cos(n_sides * rotated_angle / 2))
+                # Potenz für schärfere Ecken
+                polygon_factor = polygon_factor ** 2  # Quadrat für schärfere Ecken
+                dist = base_distance - amplitude * 0.7 * (1 - polygon_factor)
+                
+            elif pattern_type == 'complex':
+                # Kombination verschiedener Muster für komplexere Strecken
+                # Zufällige Gewichtung der verschiedenen Komponenten
+                ellipse_weight = random.uniform(0.3, 0.7)
+                wave_weight = 1 - ellipse_weight
+                
+                # Elliptische Komponente
+                ellipse_component = base_distance * (1 - eccentricity * math.cos(rotated_angle))
+                
+                # Wellenkomponente mit mehreren Frequenzen
+                freq = random.uniform(2, 5)
+                wave_component = math.sin(rotated_angle * freq + phases[0]) * amplitude
+                
+                # Kombination
+                dist = ellipse_weight * ellipse_component + wave_weight * (base_distance + wave_component)
+            
+            # Füge etwas Zufälligkeit hinzu - reduziert für konsistentere Ergebnisse
+            random_factor = random.uniform(-0.05, 0.05) * amplitude
+            dist += random_factor
+            
+            # Begrenzen auf erlaubten Bereich
             dist = max(min(dist, dist_max), dist_min)
             distances_random.append(dist)
         
