@@ -1,0 +1,25 @@
+Starte klassisches Python Track-Generierungs-Skript...
+Verwende Konfiguration aus trackgenlib (via config.yaml):
+  Track-Breite: 10.0
+  Beispiel Skript-Pfad (Mode 1): /workspaces/sdsandbox/notebook/tracks/scripted_track1.txt
+  Beispiel CSV-Pfad (Mode 2): /workspaces/sdsandbox/notebook/tracks/centerline1.csv
+  Glättungsfenster: 3
+
+Gewählter Modus (ggf. via CLI überschrieben): 4
+Track soll geschlossen werden (ggf. via CLI überschrieben): True
+--- Starte Track-Generierung/Laden für Modus: 4 ---
+Generiere zufälligen Polar-Track mit konfigurierten Bereichen...
+Verwende generate_random_polar_arc_track für Mode 4...
+Anzahl der Punkte in der Mittellinie: 56
+Erste 3 Punkte der Mittellinie: [(70.4403506543685, 28.78311287597264), (93.70559441452039, 41.62199646256509), (71.29316787083516, 78.0537218015672)]
+Letzte 3 Punkte der Mittellinie: [(-46.074353386357956, 62.56895619844911), (10.32608794653325, 40.80958471387031), (70.4403506543685, 28.78311287597264)]
+--- Ende Track-Generierung/Laden ---
+
+--- Starte Track-Visualisierung ---
+Berechne Streckenbegrenzungen...
+Streckenbegrenzungen erfolgreich berechnet.
+Stelle Track dar...
+Track gespeichert als: /workspaces/sdsandbox/notebook/output_images/generated_track_20250522_055600.png
+--- Ende Track-Visualisierung ---
+
+Das Plot-Fenster muss möglicherweise manuell geschlossen werden, um das Skript zu beenden.

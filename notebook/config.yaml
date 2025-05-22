@@ -1,9 +1,9 @@
-# Konfiguration für Track-Generierung
-track_width: 10.0  # Breite der Strecke
-segment_length: 5.0 # Länge eines einzelnen Tracksegments für zufällige Generierung
-turn_angle_max: 45  # Maximaler Kurvenwinkel in Grad für zufällige Generierung
-num_segments_random: 20 # Anzahl der Segmente für einen zufälligen Track
-max_closing_length_factor: 1.5  # Maximales Verhältnis der Schließungslänge zur durchschnittlichen Segmentlänge
+# -----------------------------------------------------------------------------
+# Allgemeine Parameter (gültig für alle Modi)
+# -----------------------------------------------------------------------------
+track_width: 10.0               # Breite der Strecke (Einheiten)
+max_closing_length_factor: 1.5 # Max. Verhältnis der Schließsegmentlänge zur durchschnittlichen Segmentlänge
+smoothing_window: 3             # Fenstergröße für gleitenden Durchschnitt (Glättung, mind. 1, 0 oder 1 deaktiviert Glättung)
 
 # Farben für die Darstellung
 color_centerline: 'black'
@@ -11,17 +11,58 @@ color_left_border: 'blue'
 color_right_border: 'red'
 alternating_colors_segments: ['lightgrey', 'darkgrey']
 
-# CSV-Konfiguration
-csv_delimiter: ','
+# Standardwerte für den Skriptaufruf (run_track_generation1.py)
+# Diese können über Kommandozeilenargumente überschrieben werden.
+default_run_mode: 4            # Standard-Modus (0-4) # Geändert auf 0 zum Testen von Mode 0
+create_closed_track_default: true # Soll standardmäßig ein geschlossener Track erzeugt werden? (true/false)
 
-# Skript-Konfiguration
-# Pfade sind relativ zum notebook-Verzeichnis oder absolut
+# -----------------------------------------------------------------------------
+# Mode 0: Zufälliger Track (Geraden + optionale Kreisbogen-Segmente)
+# -----------------------------------------------------------------------------
+num_segments_random: 20        # Anzahl der zu generierenden Segmente
+segment_length: 5.0            # Länge eines geraden Tracksegments (Einheiten)
+turn_angle_max: 45             # Maximaler Kurvenwinkel (Grad) für 'straight_turn' Segmente
+
+# Parameter für Kreisbogensegmente (werden verwendet, wenn 'arc' in curve_types_random enthalten ist)
+curve_types_random: ['straight_turn', 'arc']  # Sicherstellen, dass 'arc' enthalten ist
+arc_radius_min: 5.0            # Minimaler Radius für Bogensegmente (Einheiten)
+arc_radius_max: 20.0           # Maximaler Radius für Bogensegmente (Einheiten)
+arc_angle_max: 90.0  # Maximaler *Betrag* des Bogenwinkels in Grad (Richtung wird zufällig gewählt)
+arc_num_points: 10             # Anzahl der Interpolationspunkte zur Approximation eines Bogens
+
+# -----------------------------------------------------------------------------
+# Mode 1: Skriptbasierter Track (aus Textdatei)
+# -----------------------------------------------------------------------------
+# Pfad zur Textdatei mit "x y"-Koordinaten pro Zeile.
+# Pfade können relativ zum 'notebook'-Verzeichnis oder absolut sein.
 script_path_example: '/workspaces/sdsandbox/notebook/tracks/scripted_track1.txt'
-csv_path_example: '/workspaces/sdsandbox/notebook/tracks/centerline1.csv'
 
-# Konfiguration für Kreisbogensegmente in zufälligen Tracks
-curve_types_random: ['straight_turn', 'arc']  # Mögliche Segmenttypen
-arc_radius_min: 5.0  # Minimaler Radius für einen Bogen
-arc_radius_max: 20.0  # Maximaler Radius für einen Bogen
-arc_angle_max: 90.0  # Maximaler Winkel (in Grad) für ein Bogensegment
-arc_num_points: 10  # Anzahl der Punkte zur Approximation eines Bogens
+# -----------------------------------------------------------------------------
+# Mode 2: CSV-basierter Track (aus CSV-Datei)
+# -----------------------------------------------------------------------------
+# Pfad zur CSV-Datei mit x,y-Koordinaten der Mittellinie.
+csv_path_example: '/workspaces/sdsandbox/notebook/tracks/centerline1.csv'
+csv_delimiter: ','             # Trennzeichen für CSV-Dateien
+
+# -----------------------------------------------------------------------------
+# Mode 3: Fester Polar-Track
+# -----------------------------------------------------------------------------
+# Liste der Winkel (Grad) und Abstände (Einheiten) für die polare Mittellinie.
+# Die Anzahl der Winkel muss der Anzahl der Abstände entsprechen.
+polar_angles_fixed: [0, 45, 90, 135, 180, 225, 270, 315] # Feste Winkel (Grad)
+polar_distances_fixed: [10, 10, 10, 10, 10, 10, 10, 10]   # Feste Abstände (Einheiten)
+
+# -----------------------------------------------------------------------------
+# Mode 4: Zufälliger Polar-Track
+# -----------------------------------------------------------------------------
+num_points_polar_random: 15     # Anzahl der Punkte (und damit Segmente) für den zufälligen Polar-Track; reduziert für weniger Überschneidungen
+# Winkelbereich (Grad) und Abstandsbereich (Einheiten) für die zufällige polare Generierung.
+polar_angle_range_random: [0, 360]    # Minimaler und maximaler Winkel (Grad)
+polar_distance_range_random: [80.0, 120.0] # Minimaler und maximaler Abstand zum Ursprung (Einheiten)
+
+# Parameter für Kreisbogensegmente in Mode 4 (werden verwendet, wenn 'arc' in curve_types_polar_random enthalten ist)
+curve_types_polar_random: ['straight', 'arc']  # Mögliche Segmenttypen: 'straight' oder 'arc'
+polar_arc_radius_min: 15.0           # Minimaler Radius für Bogensegmente (Einheiten) - erhöht für weichere Kurven
+polar_arc_radius_max: 60.0           # Maximaler Radius für Bogensegmente (Einheiten) - reduziert, um zu große Bögen zu vermeiden
+polar_arc_max_angle_deg: 90.0        # Maximaler *Betrag* des Bogenwinkels in Grad - reduziert für weichere Kurven
+polar_arc_num_points: 6              # Anzahl der Interpolationspunkte zur Approximation eines Bogens - reduziert für weniger Punkte
